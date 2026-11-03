@@ -1,0 +1,79 @@
+﻿    <!-- Script para inicializar el calendario de la AGENDA -->
+    <script>
+        window.inicializarCalendario = (sesiones, bloqueos, dotNetRef) => {
+            var calendarEl = document.getElementById('calendar');
+            
+            if (window.calendario) {
+                window.calendario.destroy();
+            }
+
+            if (typeof FullCalendar === 'undefined') {
+                console.error('FullCalendar no está cargado aún.');
+                return;
+            }
+
+            // Unimos sesiones y bloqueos
+            var todosLosEventos = sesiones.concat(bloqueos);
+
+            window.calendario = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
+                },
+                events: todosLosEventos,
+                eventClick: function(info) {
+                    info.jsEvent.preventDefault();
+                    // Solo abrimos el modal si es una sesión (no un bloqueo)
+                    if (info.event.extendedProps.tipo === 'SESION') {
+                        dotNetRef.invokeMethodAsync('OnEventoClick', info.event.id);
+                    }
+                },
+                eventDidMount: function(info) {
+                    var personal = info.event.extendedProps.personal || [];
+                    var locacion = info.event.extendedProps.locacion || '';
+                    info.el.title = `Cliente: ${info.event.title}\nLocación: ${locacion}\nPersonal: ${personal.join(', ')}`;
+                }
+            });
+
+            window.calendario.render();
+        };
+    </script>
+
+    <!-- Script para inicializar el calendario del DASHBOARD -->
+    <script>
+        window.inicializarCalendarioDashboard = (sesiones, bloqueos) => {
+            var calendarEl = document.getElementById('dashboard-calendar');
+            
+            if (!calendarEl) return;
+
+            if (window.calendarioDashboard) {
+                window.calendarioDashboard.destroy();
+            }
+
+            if (typeof FullCalendar === 'undefined') {
+                console.error('FullCalendar no está cargado aún.');
+                return;
+            }
+
+            var todosLosEventos = sesiones.concat(bloqueos);
+
+            window.calendarioDashboard = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,listWeek'
+                },
+                events: todosLosEventos,
+                eventDidMount: function(info) {
+                    var personal = info.event.extendedProps.personal || [];
+                    var locacion = info.event.extendedProps.locacion || '';
+                    info.el.title = `Cliente: ${info.event.title}\nLocación: ${locacion}\nPersonal: ${personal.join(', ')}`;
+                }
+            });
+
+            window.calendarioDashboard.render();
+        };
+    </script>

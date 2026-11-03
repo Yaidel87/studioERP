@@ -1,0 +1,12 @@
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        // Si no estamos ya en el login, nos movemos para allá
+        if (!Nav.Uri.Contains("/login"))
+        {
+            Nav.NavigateTo("/login", forceLoad: true);
+        }
+    }
+}

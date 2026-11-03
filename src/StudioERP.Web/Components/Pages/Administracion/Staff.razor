@@ -1,0 +1,180 @@
+@page "/staff"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using System.Net.Http.Json
+@using StudioERP.Web.Services
+@using StudioERP.Web.Components.Pages.Usuarios.Components
+@using StudioERP.Web.Components.Pages.Administracion.Components
+
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject TokenService TokenService
+<PageTitle>Staff - StudioERP</PageTitle>
+
+<!-- CABECERA -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="fw-bold m-0">Gestión de Staff (Personal)</h4>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" @onclick="() => MostrarGestionEspecialidades = !MostrarGestionEspecialidades">
+            <i class="bi bi-tags"></i> @(MostrarGestionEspecialidades ? "Ocultar Especialidades" : "Gestionar Especialidades")
+        </button>
+        <button class="btn btn-primary" @onclick="() => MostrarModalNuevoUsuario = true">
+            <i class="bi bi-person-plus"></i> Crear Usuario
+        </button>
+    </div>
+</div>
+
+@if (MensajeError != "") { <div class="alert alert-danger">@MensajeError</div> }
+@if (MensajeExito != "") { <div class="alert alert-success">@MensajeExito</div> }
+
+<!-- COMPONENTE: GESTIÓN DE ESPECIALIDADES -->
+@if (MostrarGestionEspecialidades)
+{
+    <div class="mb-4">
+        <GestionEspecialidades />
+    </div>
+}
+
+<!-- TABLA DE STAFF -->
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white border-0 pt-3">
+        <h6 class="fw-bold m-0"><i class="bi bi-person-badge me-2"></i>Personal Registrado</h6>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4">Nombre</th>
+                    <th>Email</th>
+                    <th>Especialidades</th>
+                    <th class="text-end pe-4">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (ListaStaff == null)
+                {
+                    <tr><td colspan="4" class="text-center py-4 text-muted">Cargando...</td></tr>
+                }
+                else if (!ListaStaff.Any())
+                {
+                    <tr><td colspan="4" class="text-center py-4 text-muted">No hay personal registrado aún.</td></tr>
+                }
+                else
+                {
+                    @foreach (var s in ListaStaff)
+                    {
+                        <tr style="cursor: pointer;" @onclick="() => AbrirEdicionEspecialidades(s)">
+                            <td class="ps-4">
+                                <div class="d-flex align-items-center">
+                                    @if (!string.IsNullOrEmpty(s.Foto))
+                                    {
+                                        <img src="@($"http://localhost:5046{s.Foto}")" class="rounded-circle me-3" style="width: 40px; height: 40px; object-fit: cover;" alt="Foto" />
+                                    }
+                                    else
+                                    {
+                                        <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; font-weight: bold;">
+                                            @(s.NombreUsuario.Length > 0 ? s.NombreUsuario[0].ToString() : "?")
+                                        </div>
+                                    }
+                                    <div class="fw-bold">@s.NombreUsuario</div>
+                                </div>
+                            </td>
+                            <td>@s.Email</td>
+                            <td>
+                                <!-- AQUÍ PINTAMOS LA LISTA DE ESPECIALIDADES -->
+                                @if (s.Especialidades != null && s.Especialidades.Any())
+                                {
+                                    @foreach (var esp in s.Especialidades)
+                                    {
+                                        <span class="badge bg-info text-dark me-1 mb-1">@esp</span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="text-muted small fst-italic">Sin especialidad</span>
+                                }
+                            </td>
+                            <td class="text-end pe-4">
+                                <button class="btn btn-sm btn-outline-primary" @onclick:stopPropagation="true" @onclick="() => AbrirEdicionEspecialidades(s)">
+                                    <i class="bi bi-pencil"></i> Editar
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- COMPONENTES MODALES -->
+<NuevoUsuarioModal @bind-Mostrar="MostrarModalNuevoUsuario" OnGuardado="RecargarDespuesDeCrearUsuario" />
+
+<EditarEspecialidadesModal @bind-Mostrar="MostrarModalEditarEspecialidades" 
+                           StaffId="StaffEditandoId" 
+                           NombreStaff="StaffEditandoNombre" 
+                           EspecialidadesActuales="StaffEditandoEspecialidades" 
+                           OnGuardado="RecargarDespuesDeEditar" />
+
+@code {
+    private List<StaffDto>? ListaStaff;
+    private string MensajeError = "";
+    private string MensajeExito = "";
+
+    private bool MostrarGestionEspecialidades = false;
+    private bool MostrarModalNuevoUsuario = false;
+    
+    private bool MostrarModalEditarEspecialidades = false;
+    private Guid StaffEditandoId;
+    private string StaffEditandoNombre = "";
+    private List<Guid> StaffEditandoEspecialidades = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        if (string.IsNullOrEmpty(TokenService.Token))
+            TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+
+        var reqStaff = new HttpRequestMessage(HttpMethod.Get, "api/v1/Personal");
+        reqStaff.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+        var resStaff = await Http.SendAsync(reqStaff);
+        
+        if (resStaff.IsSuccessStatusCode)
+            ListaStaff = await resStaff.Content.ReadFromJsonAsync<List<StaffDto>>();
+    }
+
+    private async Task RecargarDespuesDeCrearUsuario(Guid nuevoUsuarioId)
+    {
+        MensajeExito = "Usuario creado. Puedes asignarle especialidades haciendo clic en su fila.";
+        await CargarDatos();
+    }
+
+    private void AbrirEdicionEspecialidades(StaffDto staff)
+    {
+        StaffEditandoId = staff.Id;
+        StaffEditandoNombre = staff.NombreUsuario;
+        // Pasamos la lista de IDs para marcar los checkboxes en el modal
+        StaffEditandoEspecialidades = staff.EspecialidadIds ?? new List<Guid>(); 
+        MostrarModalEditarEspecialidades = true;
+    }
+
+    private async Task RecargarDespuesDeEditar()
+    {
+        MensajeExito = "Especialidades actualizadas correctamente.";
+        await CargarDatos();
+    }
+
+    // --- DTO QUE COINCIDE CON LO QUE DEVUELVE EL BACKEND ---
+    public class StaffDto
+    {
+        public Guid Id { get; set; }
+        public string NombreUsuario { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Foto { get; set; } = "";
+        public List<string> Especialidades { get; set; } = new(); // Nombres
+        public List<Guid> EspecialidadIds { get; set; } = new();  // IDs para el modal
+    }
+}

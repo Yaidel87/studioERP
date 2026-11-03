@@ -1,0 +1,160 @@
+@using System.Net.Http.Json
+@using StudioERP.Web.Services
+
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject TokenService TokenService
+
+@if (Mostrar)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal fade show d-block" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">Especialidades de @NombreStaff</h5>
+                    <button type="button" class="btn-close" @onclick="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrEmpty(ErrorMensaje))
+                    {
+                        <div class="alert alert-danger">@ErrorMensaje</div>
+                    }
+
+                    <p class="text-muted small mb-3">Selecciona todas las especialidades que apliquen:</p>
+                    
+                    <div class="row g-3">
+                        @foreach (var tipo in ListaTipos)
+                        {
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" 
+                                           id="tipo_@tipo.Id" 
+                                           checked="@Seleccionados.Contains(tipo.Id)"
+                                           @onchange="e => ToggleSeleccion(tipo.Id, (bool)e.Value)" />
+                                    <label class="form-check-label fw-bold" for="tipo_@tipo.Id">
+                                        @tipo.Nombre
+                                    </label>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="Cerrar">Cancelar</button>
+                    <button type="button" class="btn btn-primary" @onclick="Guardar" disabled="@Guardando">
+                        @if (Guardando) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                        Guardar Cambios
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Mostrar { get; set; } = false;
+    [Parameter] public EventCallback<bool> MostrarChanged { get; set; }
+    [Parameter] public EventCallback OnGuardado { get; set; }
+    
+    [Parameter] public Guid StaffId { get; set; }
+    [Parameter] public string NombreStaff { get; set; } = "";
+    [Parameter] public List<Guid> EspecialidadesActuales { get; set; } = new();
+
+    private List<TipoStaffDto> ListaTipos = new();
+    private List<Guid> Seleccionados = new();
+    private bool Guardando = false;
+    private string ErrorMensaje = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Mostrar)
+        {
+            Seleccionados = new List<Guid>(EspecialidadesActuales);
+            await CargarTipos();
+        }
+    }
+
+    private async Task CargarTipos()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(TokenService.Token))
+                TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+
+            // CAMBIADO A /Personal/tipos
+            var req = new HttpRequestMessage(HttpMethod.Get, "api/v1/Personal/tipos");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+            var res = await Http.SendAsync(req);
+            
+            if (res.IsSuccessStatusCode)
+                ListaTipos = await res.Content.ReadFromJsonAsync<List<TipoStaffDto>>() ?? new();
+        }
+        catch { }
+    }
+
+    private void ToggleSeleccion(Guid id, bool seleccionado)
+    {
+        if (seleccionado)
+        {
+            if (!Seleccionados.Contains(id)) Seleccionados.Add(id);
+        }
+        else
+        {
+            Seleccionados.Remove(id);
+        }
+    }
+
+    private async Task Guardar()
+    {
+        ErrorMensaje = "";
+        Guardando = true;
+        StateHasChanged();
+
+        try
+        {
+            if (string.IsNullOrEmpty(TokenService.Token))
+                TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+
+            var request = new { TipoStaffIds = Seleccionados };
+            
+            // CAMBIADO A /Personal/{id}/especialidades
+            var req = new HttpRequestMessage(HttpMethod.Put, $"api/v1/Personal/{StaffId}/especialidades");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+            req.Content = JsonContent.Create(request);
+            
+            var res = await Http.SendAsync(req);
+
+            if (res.IsSuccessStatusCode)
+            {
+                await OnGuardado.InvokeAsync();
+                await Cerrar();
+            }
+            else
+            {
+                var error = await res.Content.ReadAsStringAsync();
+                ErrorMensaje = string.IsNullOrEmpty(error) ? "Error al guardar." : error.Replace("\"", "");
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMensaje = "Error: " + ex.Message;
+        }
+        finally
+        {
+            Guardando = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Cerrar()
+    {
+        await MostrarChanged.InvokeAsync(false);
+    }
+
+    public class TipoStaffDto
+    {
+        public Guid Id { get; set; }
+        public string Nombre { get; set; } = "";
+    }
+}

@@ -1,0 +1,15 @@
+# Carpetas de compilación
+bin/
+obj/
+
+# Configuración de Visual Studio
+.vs/
+*.user
+*.suo
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# Configuraciones locales (opcional, pero recomendado)
+appsettings.Development.json

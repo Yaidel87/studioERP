@@ -1,0 +1,146 @@
+@page "/ventas/catalogo"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using System.Net.Http.Json
+@using StudioERP.Web.Services
+@using StudioERP.Web.Components.Pages.Ventas.Components
+
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject TokenService TokenService
+<PageTitle>Catálogo - StudioERP</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="fw-bold m-0">Catálogo de Productos</h4>
+    <div class="d-flex gap-2">
+        <input type="text" class="form-control" placeholder="Buscar producto..." @bind="Busqueda" @bind:event="oninput" style="width: 250px;" />
+        <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir</button>
+        <button class="btn btn-primary" @onclick="() => MostrarModalNuevoProducto = true"><i class="bi bi-plus-lg"></i> Nuevo Producto</button>
+    </div>
+</div>
+
+@if (MensajeError != "") { <div class="alert alert-danger">@MensajeError</div> }
+
+<div class="accordion" id="accordionCatalogo">
+    @if (ListaCategorias == null)
+    {
+        <p class="text-center text-muted"><span class="spinner-border spinner-border-sm me-2"></span> Cargando catálogo...</p>
+    }
+    else if (!ListaCategorias.Any())
+    {
+        <p class="text-center text-muted">No hay productos registrados.</p>
+    }
+    else
+    {
+        @foreach (var cat in ListaCategorias)
+        {
+            var productosFiltrados = cat.Productos.Where(p => 
+                string.IsNullOrEmpty(Busqueda) || 
+                p.Nombre.Contains(Busqueda, StringComparison.OrdinalIgnoreCase)).ToList();
+
+            if (productosFiltrados.Any())
+            {
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cat-@cat.Id">
+                            <strong>@cat.Nombre</strong> <span class="badge bg-secondary ms-2">@productosFiltrados.Count productos</span>
+                        </button>
+                    </h2>
+                    <div id="cat-@cat.Id" class="accordion-collapse collapse" data-bs-parent="#accordionCatalogo">
+                        <div class="accordion-body p-0">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="ps-4">Producto</th>
+                                        <th class="text-end pe-4">Precio (USD)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var prod in productosFiltrados)
+                                    {
+                                        <tr @ondblclick="() => AbrirEdicion(prod.Id)" style="cursor: pointer;" title="Doble clic para editar">
+                                            <td class="ps-4">@prod.Nombre</td>
+                                            <td class="text-end pe-4 fw-bold text-success">$@prod.PrecioVentaBaseUSD</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    }
+</div>
+
+<NuevoProductoModal @bind-Mostrar="MostrarModalNuevoProducto" OnGuardado="RecargarDespuesDeCrear" />
+
+@if (MostrarModalEditarProducto)
+{
+    <EditarProductoModal @bind-Mostrar="MostrarModalEditarProducto" ProductoId="ProductoEditandoId" OnGuardado="RecargarDespuesDeEditar" />
+}
+
+@code {
+    private List<CategoriaDto>? ListaCategorias;
+    private string Busqueda = "";
+    private string MensajeError = "";
+    
+    private bool MostrarModalNuevoProducto = false;
+    private bool MostrarModalEditarProducto = false;
+    private Guid ProductoEditandoId;
+
+    protected override async Task OnInitializedAsync() => await CargarDatos();
+
+    private async Task CargarDatos()
+    {
+        MensajeError = "";
+        try
+        {
+            if (string.IsNullOrEmpty(TokenService.Token))
+                TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+
+            var req = new HttpRequestMessage(HttpMethod.Get, "api/v1/Catalogos/categorias");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+            var res = await Http.SendAsync(req);
+
+            if (res.IsSuccessStatusCode)
+                ListaCategorias = await res.Content.ReadFromJsonAsync<List<CategoriaDto>>();
+            else
+                MensajeError = "Error al cargar el catálogo.";
+        }
+        catch (Exception ex) { MensajeError = "Error: " + ex.Message; }
+    }
+
+    private void AbrirEdicion(Guid id)
+    {
+        ProductoEditandoId = id;
+        MostrarModalEditarProducto = true;
+    }
+
+    private async Task RecargarDespuesDeCrear()
+    {
+        await CargarDatos();
+    }
+
+    private async Task RecargarDespuesDeEditar()
+    {
+        await CargarDatos();
+    }
+
+    private async Task Imprimir() => await JS.InvokeVoidAsync("window.print");
+
+    public class CategoriaDto
+    {
+        public Guid Id { get; set; }
+        public string Nombre { get; set; } = "";
+        public int Cantidad { get; set; }
+        public List<ProductoDto> Productos { get; set; } = new();
+    }
+
+    public class ProductoDto
+    {
+        public Guid Id { get; set; }
+        public string Nombre { get; set; } = "";
+        public decimal PrecioVentaBaseUSD { get; set; }
+        public string DetalleCosto { get; set; } = "{}";
+    }
+}

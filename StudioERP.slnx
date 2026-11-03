@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StudioERP.Api/StudioERP.Api.csproj" />
+    <Project Path="src/StudioERP.Application/StudioERP.Application.csproj" />
+    <Project Path="src/StudioERP.Domain/StudioERP.Domain.csproj" />
+    <Project Path="src/StudioERP.Infrastructure/StudioERP.Infrastructure.csproj" />
+    <Project Path="src/StudioERP.Web/StudioERP.Web.csproj" />
+  </Folder>
+</Solution>

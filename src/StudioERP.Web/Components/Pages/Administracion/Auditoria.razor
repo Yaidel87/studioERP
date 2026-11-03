@@ -1,0 +1,96 @@
+@page "/administracion/auditoria"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using System.Net.Http.Json
+@using StudioERP.Web.Services
+
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject TokenService TokenService
+<PageTitle>Auditoría - StudioERP</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="fw-bold m-0">Auditoría del Sistema</h4>
+    <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir</button>
+</div>
+
+@if (MensajeError != "") { <div class="alert alert-danger">@MensajeError</div> }
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <table class="table table-sm table-striped mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4">Fecha</th>
+                    <th>Usuario</th>
+                    <th>Acción</th>
+                    <th>Entidad</th>
+                    <th>ID Entidad</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (ListaLogs == null)
+                {
+                    <tr><td colspan="5" class="text-center py-4">Cargando...</td></tr>
+                }
+                else if (!ListaLogs.Any())
+                {
+                    <tr><td colspan="5" class="text-center py-4 text-muted">No hay registros de auditoría.</td></tr>
+                }
+                else
+                {
+                    @foreach (var log in ListaLogs)
+                    {
+                        <tr>
+                            <td class="ps-4">@log.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                            <td>@(string.IsNullOrEmpty(log.UserName) ? "Sistema" : log.UserName)</td>
+                            <td><span class="badge bg-secondary">@log.Action</span></td>
+                            <td>@log.EntityName</td>
+                            <td class="text-muted small">@log.EntityId</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private List<AuditLogDto>? ListaLogs;
+    private string MensajeError = "";
+
+    protected override async Task OnInitializedAsync() => await CargarDatos();
+
+    private async Task CargarDatos()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(TokenService.Token))
+                TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+
+            var req = new HttpRequestMessage(HttpMethod.Get, "api/v1/Auditoria");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+            var res = await Http.SendAsync(req);
+
+            if (res.IsSuccessStatusCode)
+            {
+                var response = await res.Content.ReadFromJsonAsync<AuditoriaResponse>();
+                ListaLogs = response?.Logs ?? new();
+            }
+            else MensajeError = "Error al cargar auditoría.";
+        }
+        catch (Exception ex) { MensajeError = "Error: " + ex.Message; }
+    }
+
+    private async Task Imprimir() => await JS.InvokeVoidAsync("window.print");
+
+    public class AuditoriaResponse { public List<AuditLogDto> Logs { get; set; } = new(); public int Total { get; set; } }
+    public class AuditLogDto
+    {
+        public Guid Id { get; set; }
+        public string EntityName { get; set; } = "";
+        public string EntityId { get; set; } = "";
+        public string Action { get; set; } = "";
+        public string UserName { get; set; } = "";
+        public DateTime Timestamp { get; set; }
+    }
+}

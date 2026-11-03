@@ -1,0 +1,176 @@
+@page "/agenda"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@using System.Net.Http.Json
+@using StudioERP.Web.Services
+@using StudioERP.Web.Components.Pages.Ventas.Components
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject TokenService TokenService
+@inject AuthenticationStateProvider AuthProvider
+<PageTitle>Agenda - StudioERP</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="fw-bold m-0">Calendario de Sesiones</h4>
+    <div class="d-flex gap-3 small">
+        <span><span class="badge bg-primary me-1">&nbsp;</span> Sesiones</span>
+        <span><span class="badge bg-danger me-1">&nbsp;</span> Bloqueos</span>
+    </div>
+</div>
+
+@if (MensajeError != "") { <div class="alert alert-danger">@MensajeError</div> }
+
+<div id="calendar" style="height: 700px;"></div>
+
+<AsignarStaffModal @bind-Mostrar="MostrarModalAsignar" 
+                   SesionId="SesionSeleccionadaId" 
+                   OnGuardado="RecargarCalendario" />
+
+@code {
+    private string MensajeError = "";
+    private bool EsAdmin = false;
+    private bool MostrarModalAsignar = false;
+    private Guid SesionSeleccionadaId;
+    private List<EventoDto>? ListaSesiones;
+    private List<EventoDto>? ListaBloqueos;
+    private bool _scriptCargado = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        EsAdmin = authState.User.IsInRole("Admin");
+        await CargarDatos();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await CargarLibreriasJs();
+            await InicializarCalendario();
+        }
+    }
+
+    private async Task CargarLibreriasJs()
+    {
+        if (_scriptCargado) return;
+
+        await JS.InvokeVoidAsync("eval", @"
+            if (!document.getElementById('fullcalendar-css')) {
+                var link = document.createElement('link');
+                link.id = 'fullcalendar-css';
+                link.rel = 'stylesheet';
+                link.href = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css';
+                document.head.appendChild(link);
+            }
+        ");
+
+        await JS.InvokeVoidAsync("eval", @"
+            if (typeof FullCalendar === 'undefined') {
+                var script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js';
+                script.onload = () => { window.fullCalendarLoaded = true; };
+                document.head.appendChild(script);
+            } else {
+                window.fullCalendarLoaded = true;
+            }
+        ");
+
+        await Task.Delay(1000);
+        _scriptCargado = true;
+    }
+
+    private async Task CargarDatos()
+    {
+        MensajeError = "";
+        try
+        {
+            if (string.IsNullOrEmpty(TokenService.Token))
+                TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+
+            var reqSesiones = new HttpRequestMessage(HttpMethod.Get, "api/v1/Agenda/eventos");
+            reqSesiones.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+            var resSesiones = await Http.SendAsync(reqSesiones);
+            if (resSesiones.IsSuccessStatusCode)
+                ListaSesiones = await resSesiones.Content.ReadFromJsonAsync<List<EventoDto>>();
+
+            var reqBloqueos = new HttpRequestMessage(HttpMethod.Get, "api/v1/Agenda/bloqueos");
+            reqBloqueos.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+            var resBloqueos = await Http.SendAsync(reqBloqueos);
+            if (resBloqueos.IsSuccessStatusCode)
+                ListaBloqueos = await resBloqueos.Content.ReadFromJsonAsync<List<EventoDto>>();
+        }
+        catch (Exception ex)
+        {
+            MensajeError = "Error: " + ex.Message;
+        }
+    }
+
+    private async Task InicializarCalendario()
+    {
+        if (ListaSesiones == null) return;
+        if (ListaBloqueos == null) ListaBloqueos = new();
+
+        // Sesiones: como barras azules
+        var sesionesAdaptadas = ListaSesiones.Select(e => new
+        {
+            id = e.Id,
+            title = e.Title,
+            start = e.Start,
+            end = e.End,
+            color = "#4f46e5",
+            extendedProps = new
+            {
+                tipo = "SESION",
+                locacion = e.Locacion,
+                personal = e.Personal
+            }
+        }).ToList();
+
+        // Bloqueos: como fondo rojo (display: background)
+        var bloqueosAdaptados = ListaBloqueos.Select(b => new
+        {
+            id = b.Id,
+            title = b.Title,
+            start = b.Start,
+            end = b.End,
+            color = "#ef4444",
+            display = "background", // <-- Pinta el día completo
+            extendedProps = new
+            {
+                tipo = "BLOQUEO"
+            }
+        }).ToList();
+
+        await JS.InvokeVoidAsync("inicializarCalendario", sesionesAdaptadas, bloqueosAdaptados, DotNetObjectReference.Create(this));
+    }
+
+    [JSInvokable]
+    public async Task OnEventoClick(string sesionId)
+    {
+        if (EsAdmin)
+        {
+            SesionSeleccionadaId = Guid.Parse(sesionId);
+            MostrarModalAsignar = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RecargarCalendario()
+    {
+        await CargarDatos();
+        await InicializarCalendario();
+    }
+
+    public class EventoDto
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = "";
+        public string Start { get; set; } = "";
+        public string End { get; set; } = "";
+        public string Locacion { get; set; } = "";
+        public List<string> Personal { get; set; } = new();
+    }
+}
