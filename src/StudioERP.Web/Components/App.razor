@@ -1,4 +1,43 @@
-﻿    <!-- Script para inicializar el calendario de la AGENDA -->
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="StudioERP.Web.styles.css" />
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+<body>
+    <Routes @rendermode="InteractiveServer" />
+
+    <script>
+        window.guardarToken = token => localStorage.setItem('authToken', token);
+        window.leerToken = () => localStorage.getItem('authToken');
+    </script>
+
+    <script>
+        window.cargarFullCalendar = function () {
+            return new Promise((resolve) => {
+                if (typeof FullCalendar !== 'undefined') {
+                    resolve();
+                    return;
+                }
+
+                var script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js';
+                script.onload = function () { resolve(); };
+                script.onerror = function () { resolve(); };
+                document.head.appendChild(script);
+            });
+        };
+    </script>
+
+    <!-- Script para inicializar el calendario de la AGENDA -->
     <script>
         window.inicializarCalendario = (sesiones, bloqueos, dotNetRef) => {
             var calendarEl = document.getElementById('calendar');
@@ -57,7 +96,38 @@
                 return;
             }
 
-            var todosLosEventos = sesiones.concat(bloqueos);
+            var diasConSesion = new Set();
+            var diasConBloqueo = new Set();
+            var obtenerDia = function(value) {
+                var match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || '');
+                return match ? match[1] + '-' + match[2] + '-' + match[3] : null;
+            };
+            var agregarDiasOcupados = function(eventos, dias) {
+                (eventos || []).forEach(function(evento) {
+                    var inicio = obtenerDia(evento && evento.start);
+                    if (!inicio) return;
+
+                    dias.add(inicio);
+                    var fin = obtenerDia(evento.end);
+                    if (!fin || fin <= inicio) return;
+
+                    var fecha = new Date(inicio + 'T00:00:00Z');
+                    var fechaFin = new Date(fin + 'T00:00:00Z');
+                    var finExclusivo = !evento.end.slice(10).startsWith('T') ||
+                        evento.end.slice(11, 19) === '00:00:00';
+
+                    fecha.setUTCDate(fecha.getUTCDate() + 1);
+                    while (fecha < fechaFin || (!finExclusivo && fecha.getTime() === fechaFin.getTime())) {
+                        dias.add(fecha.toISOString().slice(0, 10));
+                        fecha.setUTCDate(fecha.getUTCDate() + 1);
+                    }
+                });
+            };
+
+            agregarDiasOcupados(sesiones, diasConSesion);
+            agregarDiasOcupados(bloqueos, diasConBloqueo);
+
+            var todosLosEventos = (sesiones || []).concat(bloqueos || []);
 
             window.calendarioDashboard = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
@@ -67,6 +137,15 @@
                     right: 'dayGridMonth,listWeek'
                 },
                 events: todosLosEventos,
+                dayCellClassNames: function(info) {
+                    var date = info.date;
+                    var key = date.getFullYear() + '-' +
+                        String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                        String(date.getDate()).padStart(2, '0');
+                    if (diasConBloqueo.has(key)) return ['dashboard-day-blocked'];
+                    if (diasConSesion.has(key)) return ['dashboard-day-session'];
+                    return [];
+                },
                 eventDidMount: function(info) {
                     var personal = info.event.extendedProps.personal || [];
                     var locacion = info.event.extendedProps.locacion || '';
@@ -77,3 +156,8 @@
             window.calendarioDashboard.render();
         };
     </script>
+
+    <script src="lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using StudioERP.Domain.Entities;
 using StudioERP.Infrastructure.Data;
 
-namespace StudioERP.Api.Controllers.Ventas;
+namespace StudioERP.Api.Controllers.Catalogos;
 
 [Authorize]
 [ApiController]

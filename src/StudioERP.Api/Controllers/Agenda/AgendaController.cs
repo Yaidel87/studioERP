@@ -5,7 +5,7 @@ using StudioERP.Domain.Entities;
 using StudioERP.Infrastructure.Data;
 using System.Security.Claims;
 
-namespace StudioERP.Api.Controllers.Ventas;
+namespace StudioERP.Api.Controllers.Agenda;
 
 [Authorize]
 [ApiController]

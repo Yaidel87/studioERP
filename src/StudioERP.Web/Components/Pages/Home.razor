@@ -170,29 +170,37 @@
     {
         if (firstRender)
         {
-            await Task.Delay(150);
+            await JS.InvokeVoidAsync("cargarFullCalendar");
+            await Task.Delay(300);
+
             if (EventosCalendario != null)
             {
-                // Adaptamos los bloqueos para que sean "background"
                 var bloqueosAdaptados = (BloqueosCalendario ?? new List<EventoDto>()).Select(b => new
                 {
                     id = b.Id,
                     title = b.Title,
                     start = b.Start,
                     end = b.End,
-                    color = "#ef4444",
-                    display = "background", // <-- Pinta el día completo
+                    color = "#b91c1c",
+                    backgroundColor = "#b91c1c",
+                    borderColor = "#991b1b",
+                    display = "background",
+                    allDay = true,
                     extendedProps = new { tipo = "BLOQUEO" }
                 }).ToList();
 
-                // Adaptamos las sesiones (barras normales)
                 var sesionesAdaptadas = EventosCalendario.Select(s => new
                 {
                     id = s.Id,
                     title = s.Title,
                     start = s.Start,
                     end = s.End,
-                    color = "#4f46e5",
+                    color = s.Start != null && s.Start.EndsWith("T00:00:00") ? "#1f2937" : "#4338ca",
+                    backgroundColor = s.Start != null && s.Start.EndsWith("T00:00:00") ? "#1f2937" : "#4338ca",
+                    borderColor = s.Start != null && s.Start.EndsWith("T00:00:00") ? "#111827" : "#312e81",
+                    textColor = "#ffffff",
+                    display = "background",
+                    allDay = true,
                     extendedProps = new { tipo = "SESION", locacion = s.Locacion, personal = s.Personal }
                 }).ToList();
 

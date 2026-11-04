@@ -352,3 +352,13 @@ html, body {
         transform: translateX(0);
     }
 }
+
+#dashboard-calendar .fc-daygrid-day.dashboard-day-session,
+#dashboard-calendar .fc-daygrid-day.dashboard-day-session .fc-daygrid-day-frame {
+    background-color: #bfdbfe !important;
+}
+
+#dashboard-calendar .fc-daygrid-day.dashboard-day-blocked,
+#dashboard-calendar .fc-daygrid-day.dashboard-day-blocked .fc-daygrid-day-frame {
+    background-color: #fecaca !important;
+}
