@@ -100,7 +100,31 @@ public class Paquete : BaseEntity
     public string Descripcion { get; set; } = string.Empty;
     public decimal PrecioVentaFinalUSD { get; set; }
     public ICollection<PaqueteItem> Items { get; set; } = new List<PaqueteItem>();
+    public ICollection<FichaCostoPaquete> FichasCosto { get; set; } = new List<FichaCostoPaquete>();
     public ICollection<Promocion> Promociones { get; set; } = new List<Promocion>();
+}
+
+public class FichaCostoPaquete : BaseEntity
+{
+    public Guid PaqueteId { get; set; }
+    public Paquete Paquete { get; set; } = null!;
+    public string Contexto { get; set; } = string.Empty;
+    public decimal CostoTotalUSD { get; set; }
+    public decimal MultiplicadorPrecioMinimo { get; set; } = 2m;
+    public decimal MultiplicadorPrecioIdeal { get; set; } = 3m;
+    public decimal PrecioVentaUSD { get; set; }
+    public ICollection<PartidaCostoPaquete> Partidas { get; set; } = new List<PartidaCostoPaquete>();
+}
+
+public class PartidaCostoPaquete : BaseEntity
+{
+    public Guid FichaCostoPaqueteId { get; set; }
+    public FichaCostoPaquete FichaCostoPaquete { get; set; } = null!;
+    public string Concepto { get; set; } = string.Empty;
+    public decimal Cantidad { get; set; } = 1m;
+    public decimal CostoUnitarioUSD { get; set; }
+    public decimal SubtotalUSD { get; set; }
+    public int Orden { get; set; }
 }
 
 public class PaqueteItem : BaseEntity

@@ -211,17 +211,52 @@ public class CatalogosController : ControllerBase
 
     [HttpGet("paquetes")]
     [Authorize(Roles = "Admin,Fotógrafo,Cajero")]
-    public async Task<IActionResult> ObtenerPaquetes()
+    public async Task<IActionResult> ObtenerPaquetes([FromQuery] bool incluirEliminados = false)
     {
+        if (incluirEliminados && !User.IsInRole("Admin"))
+            return Forbid();
+
         var paquetes = await _context.Paquetes
             .Include(p => p.Items).ThenInclude(i => i.Producto)
-            .Where(p => !p.IsDeleted)
+            .Include(p => p.FichasCosto).ThenInclude(ficha => ficha.Partidas)
+            .Where(p => incluirEliminados || !p.IsDeleted)
+            .OrderBy(p => p.IsDeleted)
+            .ThenBy(p => p.Nombre)
             .Select(p => new
             {
                 p.Id,
                 p.Nombre,
+                p.Descripcion,
                 p.PrecioVentaFinalUSD,
-                Items = p.Items.Select(i => new { 
+                p.IsDeleted,
+                FichasCosto = p.FichasCosto
+                    .Where(ficha => !ficha.IsDeleted)
+                    .OrderBy(ficha => ficha.Contexto)
+                    .Select(ficha => new
+                    {
+                        ficha.Id,
+                        ficha.Contexto,
+                        ficha.CostoTotalUSD,
+                        ficha.MultiplicadorPrecioMinimo,
+                        ficha.MultiplicadorPrecioIdeal,
+                        ficha.PrecioVentaUSD,
+                        PrecioMinimoUSD = ficha.CostoTotalUSD * ficha.MultiplicadorPrecioMinimo,
+                        PrecioIdealUSD = ficha.CostoTotalUSD * ficha.MultiplicadorPrecioIdeal,
+                        Partidas = ficha.Partidas
+                            .Where(partida => !partida.IsDeleted)
+                            .OrderBy(partida => partida.Orden)
+                            .Select(partida => new
+                            {
+                                partida.Id,
+                                partida.Concepto,
+                                partida.Cantidad,
+                                partida.CostoUnitarioUSD,
+                                partida.SubtotalUSD,
+                                partida.Orden
+                            }).ToList()
+                    }).ToList(),
+                Items = p.Items.Select(i => new {
+                    i.ProductoId,
                     Producto = i.Producto != null ? i.Producto.Nombre : "Eliminado", 
                     i.Cantidad 
                 }).ToList()
@@ -232,6 +267,13 @@ public class CatalogosController : ControllerBase
 
     public record PaqueteItemRequest(Guid ProductoId, int Cantidad);
     public record PaqueteRequest(string Nombre, string Descripcion, decimal PrecioVentaFinalUSD, List<PaqueteItemRequest> Items);
+    public record PartidaCostoPaqueteRequest(string Concepto, decimal Cantidad, decimal CostoUnitarioUSD, int Orden);
+    public record FichaCostoPaqueteRequest(
+        string Contexto,
+        decimal MultiplicadorPrecioMinimo,
+        decimal MultiplicadorPrecioIdeal,
+        decimal PrecioVentaUSD,
+        List<PartidaCostoPaqueteRequest> Partidas);
 
     [HttpPost("paquetes")]
     [Authorize(Roles = "Admin")]
@@ -269,14 +311,19 @@ public class CatalogosController : ControllerBase
             .FirstOrDefaultAsync(p => p.Id == id && !p.IsDeleted);
         if (paquete == null) return NotFound("Paquete no encontrado.");
 
+        await using var transaction = await _context.Database.BeginTransactionAsync();
         paquete.Nombre = request.Nombre.Trim();
         paquete.Descripcion = request.Descripcion?.Trim() ?? string.Empty;
         paquete.PrecioVentaFinalUSD = request.PrecioVentaFinalUSD;
-        paquete.Items.Clear();
+        foreach (var item in paquete.Items.Where(item => !item.IsDeleted))
+            _context.PaqueteItems.Remove(item);
+        await _context.SaveChangesAsync();
+
         foreach (var item in request.Items)
             paquete.Items.Add(new PaqueteItem { ProductoId = item.ProductoId, Cantidad = item.Cantidad });
 
         await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
         return Ok(new { mensaje = "Paquete actualizado correctamente." });
     }
 
@@ -291,6 +338,52 @@ public class CatalogosController : ControllerBase
         _context.Paquetes.Remove(paquete);
         await _context.SaveChangesAsync();
         return Ok(new { mensaje = "Paquete desactivado correctamente." });
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost("paquetes/{paqueteId:guid}/fichas-costo")]
+    public async Task<IActionResult> CrearFichaCostoPaquete(Guid paqueteId, FichaCostoPaqueteRequest request)
+    {
+        var error = await ValidarFichaCostoPaquete(paqueteId, request);
+        if (error != null) return BadRequest(error);
+        if (await _context.FichasCostoPaquetes.AnyAsync(ficha =>
+                ficha.PaqueteId == paqueteId && ficha.Contexto == request.Contexto.Trim() && !ficha.IsDeleted))
+            return BadRequest("Ya existe una ficha de costo para este contexto.");
+
+        var ficha = CrearEntidadFichaCostoPaquete(paqueteId, request);
+        _context.FichasCostoPaquetes.Add(ficha);
+        await _context.SaveChangesAsync();
+        return Ok(new { ficha.Id });
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPut("fichas-costo-paquete/{id:guid}")]
+    public async Task<IActionResult> ActualizarFichaCostoPaquete(Guid id, FichaCostoPaqueteRequest request)
+    {
+        var ficha = await _context.FichasCostoPaquetes
+            .Include(item => item.Partidas)
+            .FirstOrDefaultAsync(item => item.Id == id && !item.IsDeleted);
+        if (ficha == null) return NotFound("Ficha de costo de paquete no encontrada.");
+
+        var error = await ValidarFichaCostoPaquete(ficha.PaqueteId, request);
+        if (error != null) return BadRequest(error);
+        if (await _context.FichasCostoPaquetes.AnyAsync(item =>
+                item.Id != id &&
+                item.PaqueteId == ficha.PaqueteId &&
+                item.Contexto == request.Contexto.Trim() &&
+                !item.IsDeleted))
+            return BadRequest("Ya existe una ficha de costo para este contexto.");
+
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        var paqueteId = ficha.PaqueteId;
+        _context.FichasCostoPaquetes.Remove(ficha);
+        await _context.SaveChangesAsync();
+
+        var actualizada = CrearEntidadFichaCostoPaquete(paqueteId, request);
+        _context.FichasCostoPaquetes.Add(actualizada);
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return NoContent();
     }
 
     private async Task<string?> ValidarProducto(string nombre, decimal precio, Guid? categoriaId)
@@ -325,6 +418,58 @@ public class CatalogosController : ControllerBase
 
         return null;
     }
+
+    private async Task<string?> ValidarFichaCostoPaquete(Guid paqueteId, FichaCostoPaqueteRequest request)
+    {
+        if (!await _context.Paquetes.AnyAsync(paquete => paquete.Id == paqueteId && !paquete.IsDeleted))
+            return "El paquete no existe o está inactivo.";
+        if (string.IsNullOrWhiteSpace(request.Contexto))
+            return "Debe indicar el contexto de la ficha.";
+        if (request.MultiplicadorPrecioMinimo <= 0 ||
+            request.MultiplicadorPrecioIdeal < request.MultiplicadorPrecioMinimo)
+            return "Los multiplicadores deben ser positivos y el precio ideal no puede ser menor que el mínimo.";
+        if (request.PrecioVentaUSD < 0)
+            return "El precio de venta no puede ser negativo.";
+        if (request.Partidas == null || request.Partidas.Count == 0)
+            return "Agrega al menos una partida de costo.";
+        if (request.Partidas.Any(item =>
+                string.IsNullOrWhiteSpace(item.Concepto) ||
+                item.Cantidad <= 0 ||
+                item.CostoUnitarioUSD < 0))
+            return "Revisa las partidas: conceptos, cantidades e importes deben ser válidos.";
+        if (request.Partidas.Sum(item => item.Cantidad * item.CostoUnitarioUSD) <= 0)
+            return "El costo total de la ficha debe ser mayor que cero.";
+
+        return null;
+    }
+
+    private static FichaCostoPaquete CrearEntidadFichaCostoPaquete(Guid paqueteId, FichaCostoPaqueteRequest request)
+    {
+        var partidas = CrearPartidasCostoPaquete(request.Partidas);
+        return new FichaCostoPaquete
+        {
+            PaqueteId = paqueteId,
+            Contexto = request.Contexto.Trim(),
+            MultiplicadorPrecioMinimo = request.MultiplicadorPrecioMinimo,
+            MultiplicadorPrecioIdeal = request.MultiplicadorPrecioIdeal,
+            PrecioVentaUSD = request.PrecioVentaUSD,
+            CostoTotalUSD = partidas.Sum(partida => partida.SubtotalUSD),
+            Partidas = partidas
+        };
+    }
+
+    private static List<PartidaCostoPaquete> CrearPartidasCostoPaquete(
+        IEnumerable<PartidaCostoPaqueteRequest> requests) =>
+        requests.OrderBy(request => request.Orden)
+            .Select(request => new PartidaCostoPaquete
+            {
+                Concepto = request.Concepto.Trim(),
+                Cantidad = request.Cantidad,
+                CostoUnitarioUSD = request.CostoUnitarioUSD,
+                SubtotalUSD = Math.Round(request.Cantidad * request.CostoUnitarioUSD, 4, MidpointRounding.AwayFromZero),
+                Orden = request.Orden
+            })
+            .ToList();
 
     public record PartidaCostoRequest(
         string Concepto,

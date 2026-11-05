@@ -1,4 +1,4 @@
-﻿@inject AuthenticationStateProvider AuthProvider
+@inject AuthenticationStateProvider AuthProvider
 @inject IJSRuntime JS
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
@@ -45,7 +45,7 @@
             Productos
         </NavLink>
     </div>
-    
+
     <!-- Ventas -->
     @if (EsAdmin || EsFotografo)
     {
@@ -96,16 +96,24 @@
                     </NavLink>
                     @if (EsAdmin)
                     {
+                        <NavLink class="yt-nav-link" href="ventas/paquetes">
+                            <i class="bi bi-boxes yt-icon"></i>
+                            Paquetes
+                        </NavLink>
                         <NavLink class="yt-nav-link" href="ventas/promociones">
                             <i class="bi bi-tag yt-icon"></i>
                             Promociones
                         </NavLink>
-                        <NavLink class="yt-nav-link" href="ventas/fichas-costo">
-                            <i class="bi bi-receipt yt-icon"></i>
-                            Fichas de costo
-                        </NavLink>
                     }
-                    
+                    <NavLink class="yt-nav-link" href="ventas/productos">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor"
+                             class="bi bi-box-seam yt-icon" viewBox="0 0 16 16">
+                            <path
+                            d="M8.186 1.113a.5.5 0 0 0-.372 0L1.846 3.5l2.404.961L10.404 2l-2.218-.887zm3.564 1.426L5.596 5 8 6.464 13.85 3.07l-2.1-.53zm2.65 1.046-4.35 1.74v5.858l4.35-1.74V3.585zm-5.35 1.74L2.7 3.585v5.858l4.35 1.74V5.325zM1.5 2.6l6-2.4a1.5 1.5 0 0 1 1.118 0l6 2.4a1.5 1.5 0 0 1 .882 1.371v7.058a1.5 1.5 0 0 1-.882 1.371l-6 2.4a1.5 1.5 0 0 1-1.118 0l-6-2.4A1.5 1.5 0 0 1 .618 10.63V3.971a1.5 1.5 0 0 1 .882-1.371z" />
+                        </svg>
+                        Productos
+                    </NavLink>
+
                 </div>
             }
         </div>
@@ -179,7 +187,13 @@
                         <i class="bi bi-person-workspace yt-sub-icon"></i>
                         Pagos al personal
                     </NavLink>
-                    
+
+                    <NavLink class="yt-nav-link" href="finanzas/fichas-costo">
+                        <i class="bi bi-receipt yt-icon"></i>
+                        Fichas de costo
+                    </NavLink>
+
+
                 </div>
             }
         </div>
@@ -243,7 +257,7 @@
                         </svg>
                         Staff (Personal)
                     </NavLink>
-                    
+
                     <NavLink class="yt-nav-link yt-sub-link" href="administracion/auditoria">
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor"
                              class="bi bi-clock-history yt-sub-icon" viewBox="0 0 16 16">
@@ -287,19 +301,19 @@
         {
             var estadoGuardarFinanzas = await JS.InvokeAsync<string>("localStorage.getItem", "finanzasMenuOpen");
             var estadoGuardadoVentas = await JS.InvokeAsync<string>("localStorage.getItem", "finanzasMenuOpen");
-            
+
             var estadoGuardadoAdmin = await JS.InvokeAsync<string>("localStorage.getItem", "adminMenuOpen");
             if (!string.IsNullOrEmpty(estadoGuardarFinanzas))
             {
                 FinanzasOpen = bool.Parse(estadoGuardarFinanzas);
                 AdminOpen = false;
-                VentasOpen=false;
+                VentasOpen = false;
             }
             if (!string.IsNullOrEmpty(estadoGuardadoAdmin))
             {
                 AdminOpen = bool.Parse(estadoGuardadoAdmin);
                 FinanzasOpen = false;
-                VentasOpen=false;
+                VentasOpen = false;
             }
             if (!string.IsNullOrEmpty(estadoGuardadoVentas))
             {
@@ -337,5 +351,5 @@
         /* FinanzasOpen = false;
          AdminOpen=false;*/
     }
-    
+
 }

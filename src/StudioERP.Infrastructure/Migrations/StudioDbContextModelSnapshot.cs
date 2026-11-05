@@ -473,6 +473,57 @@ namespace StudioERP.Infrastructure.Migrations
                     b.ToTable("DocumentSequences");
                 });
 
+            modelBuilder.Entity("StudioERP.Domain.Entities.FichaCostoPaquete", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Contexto")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("CostoTotalUSD")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("MultiplicadorPrecioIdeal")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("numeric(8,2)");
+
+                    b.Property<decimal>("MultiplicadorPrecioMinimo")
+                        .HasPrecision(8, 2)
+                        .HasColumnType("numeric(8,2)");
+
+                    b.Property<Guid>("PaqueteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("PrecioVentaUSD")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaqueteId");
+
+                    b.ToTable("FichasCostoPaquetes");
+                });
+
             modelBuilder.Entity("StudioERP.Domain.Entities.FichaCostoProducto", b =>
                 {
                     b.Property<Guid>("Id")
@@ -930,6 +981,56 @@ namespace StudioERP.Infrastructure.Migrations
                     b.HasIndex("FichaCostoProductoId", "Orden");
 
                     b.ToTable("PartidasCostoFicha");
+                });
+
+            modelBuilder.Entity("StudioERP.Domain.Entities.PartidaCostoPaquete", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Cantidad")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<string>("Concepto")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("CostoUnitarioUSD")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("FichaCostoPaqueteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Orden")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("SubtotalUSD")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("numeric(18,4)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FichaCostoPaqueteId", "Orden");
+
+                    b.ToTable("PartidasCostoPaquetes");
                 });
 
             modelBuilder.Entity("StudioERP.Domain.Entities.Permiso", b =>
@@ -1709,6 +1810,17 @@ namespace StudioERP.Infrastructure.Migrations
                     b.Navigation("Staff");
                 });
 
+            modelBuilder.Entity("StudioERP.Domain.Entities.FichaCostoPaquete", b =>
+                {
+                    b.HasOne("StudioERP.Domain.Entities.Paquete", "Paquete")
+                        .WithMany("FichasCosto")
+                        .HasForeignKey("PaqueteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Paquete");
+                });
+
             modelBuilder.Entity("StudioERP.Domain.Entities.FichaCostoProducto", b =>
                 {
                     b.HasOne("StudioERP.Domain.Entities.Producto", "Producto")
@@ -1800,6 +1912,17 @@ namespace StudioERP.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("FichaCostoProducto");
+                });
+
+            modelBuilder.Entity("StudioERP.Domain.Entities.PartidaCostoPaquete", b =>
+                {
+                    b.HasOne("StudioERP.Domain.Entities.FichaCostoPaquete", "FichaCostoPaquete")
+                        .WithMany("Partidas")
+                        .HasForeignKey("FichaCostoPaqueteId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("FichaCostoPaquete");
                 });
 
             modelBuilder.Entity("StudioERP.Domain.Entities.Producto", b =>
@@ -1966,6 +2089,11 @@ namespace StudioERP.Infrastructure.Migrations
                     b.Navigation("Suplementos");
                 });
 
+            modelBuilder.Entity("StudioERP.Domain.Entities.FichaCostoPaquete", b =>
+                {
+                    b.Navigation("Partidas");
+                });
+
             modelBuilder.Entity("StudioERP.Domain.Entities.FichaCostoProducto", b =>
                 {
                     b.Navigation("Partidas");
@@ -1973,6 +2101,8 @@ namespace StudioERP.Infrastructure.Migrations
 
             modelBuilder.Entity("StudioERP.Domain.Entities.Paquete", b =>
                 {
+                    b.Navigation("FichasCosto");
+
                     b.Navigation("Items");
 
                     b.Navigation("Promociones");

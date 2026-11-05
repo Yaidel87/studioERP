@@ -32,6 +32,8 @@ public class StudioDbContext : DbContext
     public DbSet<HistorialPrecioProducto> HistorialPreciosProductos { get; set; }
     public DbSet<Paquete> Paquetes { get; set; }
     public DbSet<PaqueteItem> PaqueteItems { get; set; }
+    public DbSet<FichaCostoPaquete> FichasCostoPaquetes { get; set; }
+    public DbSet<PartidaCostoPaquete> PartidasCostoPaquetes { get; set; }
     public DbSet<Cliente> Clientes { get; set; }
     public DbSet<Contacto> Contactos { get; set; }
     public DbSet<Contrato> Contratos { get; set; }
@@ -99,6 +101,13 @@ public class StudioDbContext : DbContext
         modelBuilder.Entity<PartidaCostoFicha>().Property(item => item.CostoUnitarioUSD).HasPrecision(18, 4);
         modelBuilder.Entity<PartidaCostoFicha>().Property(item => item.Porcentaje).HasPrecision(8, 4);
         modelBuilder.Entity<PartidaCostoFicha>().Property(item => item.SubtotalUSD).HasPrecision(18, 2);
+        modelBuilder.Entity<FichaCostoPaquete>().Property(ficha => ficha.CostoTotalUSD).HasPrecision(18, 2);
+        modelBuilder.Entity<FichaCostoPaquete>().Property(ficha => ficha.MultiplicadorPrecioMinimo).HasPrecision(8, 2);
+        modelBuilder.Entity<FichaCostoPaquete>().Property(ficha => ficha.MultiplicadorPrecioIdeal).HasPrecision(8, 2);
+        modelBuilder.Entity<FichaCostoPaquete>().Property(ficha => ficha.PrecioVentaUSD).HasPrecision(18, 2);
+        modelBuilder.Entity<PartidaCostoPaquete>().Property(item => item.Cantidad).HasPrecision(18, 4);
+        modelBuilder.Entity<PartidaCostoPaquete>().Property(item => item.CostoUnitarioUSD).HasPrecision(18, 4);
+        modelBuilder.Entity<PartidaCostoPaquete>().Property(item => item.SubtotalUSD).HasPrecision(18, 4);
         modelBuilder.Entity<Promocion>().Property(p => p.ValorDescuento).HasPrecision(18, 2);
 
         // Índices
@@ -126,6 +135,18 @@ public class StudioDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
         modelBuilder.Entity<PartidaCostoFicha>()
             .HasIndex(item => new { item.FichaCostoProductoId, item.Orden });
+        modelBuilder.Entity<FichaCostoPaquete>()
+            .HasOne(ficha => ficha.Paquete)
+            .WithMany(paquete => paquete.FichasCosto)
+            .HasForeignKey(ficha => ficha.PaqueteId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PartidaCostoPaquete>()
+            .HasOne(item => item.FichaCostoPaquete)
+            .WithMany(ficha => ficha.Partidas)
+            .HasForeignKey(item => item.FichaCostoPaqueteId)
+            .OnDelete(DeleteBehavior.Restrict);
+        modelBuilder.Entity<PartidaCostoPaquete>()
+            .HasIndex(item => new { item.FichaCostoPaqueteId, item.Orden });
         modelBuilder.Entity<Promocion>()
             .HasOne(p => p.Producto)
             .WithMany(producto => producto.Promociones)

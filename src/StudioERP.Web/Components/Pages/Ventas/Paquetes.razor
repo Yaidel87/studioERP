@@ -1,0 +1,641 @@
+@page "/ventas/paquetes"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@using System.Net.Http.Json
+@using StudioERP.Web.Services
+
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject TokenService TokenService
+
+<PageTitle>Paquetes - StudioERP</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">Paquetes y ofertas</h4>
+        <p class="text-muted mb-0">Crea, modifica y elimina paquetes; las bajas se conservan al final de la página.</p>
+    </div>
+    <span class="badge bg-primary fs-6">@ListaPaquetes.Count(paquete => !paquete.IsDeleted) activos</span>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(MensajeError))
+{
+    <div class="alert alert-danger">@MensajeError</div>
+}
+@if (!string.IsNullOrWhiteSpace(MensajeExito))
+{
+    <div class="alert alert-success">@MensajeExito</div>
+}
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <h5 class="fw-bold mb-3">@(PaqueteEditandoId.HasValue ? "Modificar paquete" : "Crear paquete")</h5>
+        <div class="row g-3">
+            <div class="col-md-5">
+                <label class="form-label">Nombre</label>
+                <input class="form-control" @bind="Formulario.Nombre" maxlength="200" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Precio de venta (USD)</label>
+                <input type="number" class="form-control" min="0" step="0.01" @bind="Formulario.PrecioVentaFinalUSD" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Descripción</label>
+                <input class="form-control" @bind="Formulario.Descripcion" maxlength="1000" />
+            </div>
+            <div class="col-12">
+                <label class="form-label">Agregar producto al paquete</label>
+                <div class="input-group">
+                    <select class="form-select" @bind="ProductoSeleccionadoId">
+                        <option value="">Selecciona un producto</option>
+                        @foreach (var producto in Productos)
+                        {
+                            <option value="@producto.Id">@producto.Nombre — $@producto.PrecioVentaBaseUSD.ToString("N2")</option>
+                        }
+                    </select>
+                    <input type="number" class="form-control" style="max-width: 120px" min="1" @bind="CantidadSeleccionada" aria-label="Cantidad" />
+                    <button class="btn btn-outline-primary" @onclick="AgregarProducto" disabled="@Guardando">Agregar</button>
+                </div>
+            </div>
+            <div class="col-12">
+                @if (Formulario.Items.Count == 0)
+                {
+                    <div class="text-muted small">Agrega al menos un producto para guardar el paquete.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead><tr><th>Producto</th><th style="width: 130px">Cantidad</th><th style="width: 80px"></th></tr></thead>
+                            <tbody>
+                                @foreach (var item in Formulario.Items)
+                                {
+                                    <tr>
+                                        <td>@(Productos.FirstOrDefault(producto => producto.Id == item.ProductoId)?.Nombre ?? "Producto no disponible")</td>
+                                        <td><input type="number" class="form-control form-control-sm" min="1" @bind="item.Cantidad" /></td>
+                                        <td class="text-end"><button class="btn btn-sm btn-outline-danger" title="Quitar" @onclick="() => QuitarProducto(item)"><i class="bi bi-x-lg"></i></button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+            <div class="col-12"><hr /><h6 class="fw-bold mb-0">Ficha de costo</h6></div>
+            <div class="col-md-4">
+                <label class="form-label">Contexto</label>
+                <input class="form-control" @bind="Formulario.Ficha.Contexto" maxlength="250" placeholder="Ej. Quince, niños, eventos" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Múltiplo mínimo</label>
+                <input type="number" class="form-control" min="0.01" step="0.01" @bind="Formulario.Ficha.MultiplicadorPrecioMinimo" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Múltiplo ideal</label>
+                <input type="number" class="form-control" min="0.01" step="0.01" @bind="Formulario.Ficha.MultiplicadorPrecioIdeal" />
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <span class="text-muted">Costo total: <strong>$@CostoTotal.ToString("N2")</strong> · Mínimo: <strong>$@PrecioMinimo.ToString("N2")</strong> · Ideal: <strong>$@PrecioIdeal.ToString("N2")</strong></span>
+            </div>
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <label class="form-label mb-0">Partidas de costo</label>
+                    <button class="btn btn-sm btn-outline-primary" @onclick="AgregarPartidaCosto"><i class="bi bi-plus-lg me-1"></i>Agregar partida</button>
+                </div>
+                @if (Formulario.Ficha.Partidas.Count == 0)
+                {
+                    <div class="text-muted small">Agrega las partidas de impresión, personal, materiales y otros costos.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead><tr><th>Concepto</th><th style="width: 120px">Cantidad</th><th style="width: 160px">Costo unitario USD</th><th style="width: 120px">Subtotal</th><th style="width: 80px"></th></tr></thead>
+                            <tbody>
+                                @foreach (var partida in Formulario.Ficha.Partidas)
+                                {
+                                    <tr>
+                                        <td><input class="form-control form-control-sm" @bind="partida.Concepto" maxlength="200" /></td>
+                                        <td><input type="number" class="form-control form-control-sm" min="0.0001" step="0.01" @bind="partida.Cantidad" /></td>
+                                        <td><input type="number" class="form-control form-control-sm" min="0" step="0.0001" @bind="partida.CostoUnitarioUSD" /></td>
+                                        <td>$@((partida.Cantidad * partida.CostoUnitarioUSD).ToString("N2"))</td>
+                                        <td class="text-end"><button class="btn btn-sm btn-outline-danger" title="Quitar partida" @onclick="() => QuitarPartidaCosto(partida)"><i class="bi bi-x-lg"></i></button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+            <div class="col-12 text-end">
+                @if (PaqueteEditandoId.HasValue)
+                {
+                    <button class="btn btn-outline-secondary me-2" @onclick="CancelarEdicion" disabled="@Guardando">Cancelar</button>
+                }
+                <button class="btn btn-primary" @onclick="GuardarPaquete" disabled="@Guardando">
+                    @(Guardando ? "Guardando..." : PaqueteEditandoId.HasValue ? "Guardar cambios" : "Crear paquete")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (Cargando)
+{
+    <p class="text-center text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Cargando paquetes...</p>
+}
+else if (ListaPaquetes.Count == 0)
+{
+    <div class="alert alert-info">No hay paquetes registrados.</div>
+}
+else
+{
+    @foreach (var grupo in PaquetesActivos.GroupBy(paquete => ObtenerGrupo(paquete.Nombre)))
+    {
+        <h5 class="fw-bold mt-4 mb-3">@grupo.Key <span class="badge bg-secondary ms-1">@grupo.Count()</span></h5>
+        <div class="row g-3">
+            @foreach (var paquete in grupo)
+            {
+                <div class="col-12 col-xl-6">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                                <h5 class="card-title fw-bold mb-0">@paquete.Nombre</h5>
+                                <span class="badge bg-success fs-6 text-nowrap">$@paquete.PrecioVentaFinalUSD.ToString("N2") USD</span>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(paquete.Descripcion))
+                            {
+                                <p class="small text-muted">@paquete.Descripcion</p>
+                            }
+                            @if (paquete.Items.Count > 0)
+                            {
+                                <ul class="list-group list-group-flush">
+                                    @foreach (var item in paquete.Items)
+                                    {
+                                        <li class="list-group-item px-0 d-flex justify-content-between">
+                                            <span>@item.Producto</span>
+                                            <span class="text-muted">x @item.Cantidad</span>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            else
+                            {
+                                <p class="text-muted mb-0">Este paquete no tiene productos asociados.</p>
+                            }
+                            @foreach (var ficha in paquete.FichasCosto)
+                            {
+                                <div class="border rounded p-3 mt-3 bg-light">
+                                    <div class="d-flex justify-content-between align-items-start gap-2">
+                                        <div>
+                                            <strong>Ficha de costo — @ficha.Contexto</strong>
+                                            <div class="small text-muted">
+                                                Costo: $@ficha.CostoTotalUSD.ToString("N2") ·
+                                                Mínimo: $@ficha.PrecioMinimoUSD.ToString("N2") ·
+                                                Ideal: $@ficha.PrecioIdealUSD.ToString("N2")
+                                            </div>
+                                        </div>
+                                        <strong>$@ficha.PrecioVentaUSD.ToString("N2")</strong>
+                                    </div>
+                                    <ul class="small mb-0 mt-2">
+                                        @foreach (var partida in ficha.Partidas)
+                                        {
+                                            <li>@partida.Concepto: @partida.Cantidad.ToString("N2") × $@partida.CostoUnitarioUSD.ToString("N4") = $@partida.SubtotalUSD.ToString("N2")</li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                            <div class="text-end mt-3">
+                                <button class="btn btn-sm btn-outline-primary me-2" @onclick="() => EditarPaquete(paquete)" disabled="@Guardando">
+                                    <i class="bi bi-pencil me-1"></i>Modificar
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger"
+                                        @onclick="() => EliminarPaquete(paquete)"
+                                        disabled="@Guardando">
+                                    <i class="bi bi-trash me-1"></i>Eliminar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
+    @if (PaquetesEliminados.Count > 0)
+    {
+        <hr class="my-5" />
+        <h5 class="fw-bold text-secondary mb-3">
+            Paquetes eliminados
+            <span class="badge bg-secondary ms-1">@PaquetesEliminados.Count</span>
+        </h5>
+        <div class="row g-3">
+            @foreach (var paquete in PaquetesEliminados)
+            {
+                <div class="col-12 col-xl-6">
+                    <div class="card border-secondary shadow-sm h-100 opacity-75">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                                <div>
+                                    <h5 class="card-title fw-bold mb-1 text-decoration-line-through">@paquete.Nombre</h5>
+                                    <span class="badge bg-secondary">Eliminado lógicamente</span>
+                                </div>
+                                <span class="badge bg-secondary fs-6 text-nowrap">$@paquete.PrecioVentaFinalUSD.ToString("N2") USD</span>
+                            </div>
+                            @if (paquete.Items.Count > 0)
+                            {
+                                <ul class="list-group list-group-flush">
+                                    @foreach (var item in paquete.Items)
+                                    {
+                                        <li class="list-group-item px-0 d-flex justify-content-between">
+                                            <span>@item.Producto</span>
+                                            <span class="text-muted">x @item.Cantidad</span>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private List<PaqueteDto> ListaPaquetes = new();
+    private List<ProductoDto> Productos = new();
+    private PaqueteFormulario Formulario = new();
+    private Guid? PaqueteEditandoId;
+    private string MensajeError = "";
+    private string MensajeExito = "";
+    private string ProductoSeleccionadoId = "";
+    private int CantidadSeleccionada = 1;
+    private bool Cargando = true;
+    private bool Guardando;
+    private decimal CostoTotal => Formulario.Ficha.Partidas.Sum(partida => partida.Cantidad * partida.CostoUnitarioUSD);
+    private decimal PrecioMinimo => CostoTotal * Formulario.Ficha.MultiplicadorPrecioMinimo;
+    private decimal PrecioIdeal => CostoTotal * Formulario.Ficha.MultiplicadorPrecioIdeal;
+    private IEnumerable<PaqueteDto> PaquetesActivos => ListaPaquetes.Where(paquete => !paquete.IsDeleted);
+    private List<PaqueteDto> PaquetesEliminados => ListaPaquetes.Where(paquete => paquete.IsDeleted).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarPaquetes();
+    }
+
+    private async Task CargarPaquetes()
+    {
+        Cargando = true;
+        MensajeError = "";
+        try
+        {
+            if (string.IsNullOrWhiteSpace(TokenService.Token))
+                TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, "api/v1/Catalogos/paquetes?incluirEliminados=true");
+            if (!string.IsNullOrWhiteSpace(TokenService.Token))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+
+            using var response = await Http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                MensajeError = string.IsNullOrWhiteSpace(content)
+                    ? $"La API respondió con {(int)response.StatusCode}."
+                    : content.Trim('"');
+                return;
+            }
+
+            ListaPaquetes = await response.Content.ReadFromJsonAsync<List<PaqueteDto>>() ?? new();
+            Productos = await ObtenerProductos();
+        }
+        catch (HttpRequestException ex)
+        {
+            MensajeError = ex.Message;
+        }
+        finally
+        {
+            Cargando = false;
+        }
+    }
+
+    private async Task<List<ProductoDto>> ObtenerProductos()
+    {
+        using var request = CrearRequest(HttpMethod.Get, "api/v1/Catalogos/productos");
+        using var response = await Http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException(await ObtenerError(response));
+        return await response.Content.ReadFromJsonAsync<List<ProductoDto>>() ?? new();
+    }
+
+    private async Task GuardarPaquete()
+    {
+        MensajeError = "";
+        MensajeExito = "";
+        if (string.IsNullOrWhiteSpace(Formulario.Nombre) || Formulario.Items.Count == 0 ||
+            Formulario.Items.Any(item => item.Cantidad <= 0) ||
+            string.IsNullOrWhiteSpace(Formulario.Ficha.Contexto) ||
+            Formulario.Ficha.Partidas.Count == 0 ||
+            Formulario.Ficha.Partidas.Any(partida =>
+                string.IsNullOrWhiteSpace(partida.Concepto) ||
+                partida.Cantidad <= 0 ||
+                partida.CostoUnitarioUSD < 0) ||
+            CostoTotal <= 0 ||
+            Formulario.Ficha.MultiplicadorPrecioMinimo <= 0 ||
+            Formulario.Ficha.MultiplicadorPrecioIdeal < Formulario.Ficha.MultiplicadorPrecioMinimo)
+        {
+            MensajeError = "Completa el nombre, los productos, el contexto y las partidas válidas de costo.";
+            return;
+        }
+
+        Guardando = true;
+        var paqueteGuardado = false;
+        try
+        {
+            var metodo = PaqueteEditandoId.HasValue ? HttpMethod.Put : HttpMethod.Post;
+            var ruta = PaqueteEditandoId.HasValue
+                ? $"api/v1/Catalogos/paquetes/{PaqueteEditandoId}"
+                : "api/v1/Catalogos/paquetes";
+            using var request = CrearRequest(metodo, ruta);
+            request.Content = JsonContent.Create(new
+            {
+                Formulario.Nombre,
+                Formulario.Descripcion,
+                Formulario.PrecioVentaFinalUSD,
+                Items = Formulario.Items.Select(item => new { item.ProductoId, item.Cantidad }).ToList()
+            });
+            using var response = await Http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                MensajeError = await ObtenerError(response);
+                return;
+            }
+            paqueteGuardado = true;
+
+            var paqueteId = PaqueteEditandoId;
+            if (!paqueteId.HasValue)
+            {
+                var resultado = await response.Content.ReadFromJsonAsync<PaqueteCreadoDto>();
+                paqueteId = resultado?.Id;
+            }
+            if (!paqueteId.HasValue)
+            {
+                await CargarPaquetes();
+                MensajeError = "El paquete se guardó, pero la API no devolvió su identificador para registrar la ficha de costo.";
+                return;
+            }
+
+            var fichaRequest = CrearRequest(
+                Formulario.Ficha.Id.HasValue ? HttpMethod.Put : HttpMethod.Post,
+                Formulario.Ficha.Id.HasValue
+                    ? $"api/v1/Catalogos/fichas-costo-paquete/{Formulario.Ficha.Id}"
+                    : $"api/v1/Catalogos/paquetes/{paqueteId}/fichas-costo");
+            fichaRequest.Content = JsonContent.Create(new
+            {
+                Formulario.Ficha.Contexto,
+                Formulario.Ficha.MultiplicadorPrecioMinimo,
+                Formulario.Ficha.MultiplicadorPrecioIdeal,
+                PrecioVentaUSD = Formulario.PrecioVentaFinalUSD,
+                Partidas = Formulario.Ficha.Partidas.Select((partida, orden) => new
+                {
+                    partida.Concepto,
+                    partida.Cantidad,
+                    partida.CostoUnitarioUSD,
+                    Orden = orden
+                }).ToList()
+            });
+            using var fichaResponse = await Http.SendAsync(fichaRequest);
+            if (!fichaResponse.IsSuccessStatusCode)
+            {
+                var errorFicha = await ObtenerError(fichaResponse);
+                await CargarPaquetes();
+                MensajeError = $"El paquete se guardó, pero no se pudo guardar su ficha de costo: {errorFicha}";
+                return;
+            }
+
+            MensajeExito = PaqueteEditandoId.HasValue ? "Paquete actualizado correctamente." : "Paquete creado correctamente.";
+            CancelarEdicion();
+            await CargarPaquetes();
+        }
+        catch (HttpRequestException ex)
+        {
+            MensajeError = paqueteGuardado
+                ? $"El paquete se guardó, pero hubo un problema al completar la operación: {ex.Message}"
+                : ex.Message;
+        }
+        finally
+        {
+            Guardando = false;
+        }
+    }
+
+    private void AgregarProducto()
+    {
+        if (!Guid.TryParse(ProductoSeleccionadoId, out var productoId) || CantidadSeleccionada <= 0)
+            return;
+
+        var existente = Formulario.Items.FirstOrDefault(item => item.ProductoId == productoId);
+        if (existente is null)
+            Formulario.Items.Add(new PaqueteItemFormulario { ProductoId = productoId, Cantidad = CantidadSeleccionada });
+        else
+            existente.Cantidad += CantidadSeleccionada;
+
+        ProductoSeleccionadoId = "";
+        CantidadSeleccionada = 1;
+    }
+
+    private void QuitarProducto(PaqueteItemFormulario item) => Formulario.Items.Remove(item);
+
+    private void AgregarPartidaCosto() =>
+        Formulario.Ficha.Partidas.Add(new PartidaCostoFormulario { Orden = Formulario.Ficha.Partidas.Count });
+
+    private void QuitarPartidaCosto(PartidaCostoFormulario partida) => Formulario.Ficha.Partidas.Remove(partida);
+
+    private void EditarPaquete(PaqueteDto paquete)
+    {
+        MensajeError = "";
+        MensajeExito = "";
+        PaqueteEditandoId = paquete.Id;
+        Formulario = new PaqueteFormulario
+        {
+            Nombre = paquete.Nombre,
+            Descripcion = paquete.Descripcion,
+            PrecioVentaFinalUSD = paquete.PrecioVentaFinalUSD,
+            Items = paquete.Items
+                .Where(item => item.ProductoId.HasValue)
+                .Select(item => new PaqueteItemFormulario { ProductoId = item.ProductoId!.Value, Cantidad = item.Cantidad })
+                .ToList(),
+            Ficha = paquete.FichasCosto.FirstOrDefault() is { } ficha
+                ? new FichaCostoFormulario
+                {
+                    Id = ficha.Id,
+                    Contexto = ficha.Contexto,
+                    MultiplicadorPrecioMinimo = ficha.MultiplicadorPrecioMinimo,
+                    MultiplicadorPrecioIdeal = ficha.MultiplicadorPrecioIdeal,
+                    Partidas = ficha.Partidas
+                        .Select(partida => new PartidaCostoFormulario
+                        {
+                            Concepto = partida.Concepto,
+                            Cantidad = partida.Cantidad,
+                            CostoUnitarioUSD = partida.CostoUnitarioUSD,
+                            Orden = partida.Orden
+                        })
+                        .ToList()
+                }
+                : new FichaCostoFormulario()
+        };
+    }
+
+    private void CancelarEdicion()
+    {
+        PaqueteEditandoId = null;
+        Formulario = new();
+    }
+
+    private async Task EliminarPaquete(PaqueteDto paquete)
+    {
+        var confirmar = await JS.InvokeAsync<bool>("confirm", $"¿Eliminar lógicamente el paquete «{paquete.Nombre}»?");
+        if (!confirmar)
+            return;
+
+        Guardando = true;
+        MensajeError = "";
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Delete, $"api/v1/Catalogos/paquetes/{paquete.Id}");
+            if (!string.IsNullOrWhiteSpace(TokenService.Token))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+
+            using var response = await Http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var content = await response.Content.ReadAsStringAsync();
+                MensajeError = string.IsNullOrWhiteSpace(content)
+                    ? $"La API respondió con {(int)response.StatusCode}."
+                    : content.Trim('"');
+                return;
+            }
+
+            await CargarPaquetes();
+        }
+        catch (HttpRequestException ex)
+        {
+            MensajeError = ex.Message;
+        }
+        finally
+        {
+            Guardando = false;
+        }
+    }
+
+    private static string ObtenerGrupo(string nombre)
+    {
+        if (nombre.StartsWith("Oferta Quince", StringComparison.OrdinalIgnoreCase))
+            return "Ofertas de quince";
+        if (nombre.StartsWith("Oferta Niños", StringComparison.OrdinalIgnoreCase))
+            return "Ofertas de niños";
+        if (nombre.StartsWith("Evento ", StringComparison.OrdinalIgnoreCase))
+            return "Ofertas de eventos";
+        if (nombre.StartsWith("Oferta Chiqui", StringComparison.OrdinalIgnoreCase))
+            return "Otras ofertas";
+        return "Otros paquetes";
+    }
+
+    private HttpRequestMessage CrearRequest(HttpMethod method, string uri)
+    {
+        var request = new HttpRequestMessage(method, uri);
+        if (!string.IsNullOrWhiteSpace(TokenService.Token))
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+        return request;
+    }
+
+    private static async Task<string> ObtenerError(HttpResponseMessage response)
+    {
+        var content = await response.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(content) ? $"La API respondió con {(int)response.StatusCode}." : content.Trim('"');
+    }
+
+    private sealed class PaqueteDto
+    {
+        public Guid Id { get; set; }
+        public string Nombre { get; set; } = "";
+        public string Descripcion { get; set; } = "";
+        public decimal PrecioVentaFinalUSD { get; set; }
+        public bool IsDeleted { get; set; }
+        public List<PaqueteItemDto> Items { get; set; } = new();
+        public List<FichaCostoPaqueteDto> FichasCosto { get; set; } = new();
+    }
+
+    private sealed class PaqueteItemDto
+    {
+        public Guid? ProductoId { get; set; }
+        public string Producto { get; set; } = "";
+        public int Cantidad { get; set; }
+    }
+
+    private sealed class ProductoDto
+    {
+        public Guid Id { get; set; }
+        public string Nombre { get; set; } = "";
+        public decimal PrecioVentaBaseUSD { get; set; }
+    }
+
+    private sealed class PaqueteFormulario
+    {
+        public string Nombre { get; set; } = "";
+        public string Descripcion { get; set; } = "";
+        public decimal PrecioVentaFinalUSD { get; set; }
+        public List<PaqueteItemFormulario> Items { get; set; } = new();
+        public FichaCostoFormulario Ficha { get; set; } = new();
+    }
+
+    private sealed class PaqueteItemFormulario
+    {
+        public Guid ProductoId { get; set; }
+        public int Cantidad { get; set; } = 1;
+    }
+
+    private sealed class FichaCostoFormulario
+    {
+        public Guid? Id { get; set; }
+        public string Contexto { get; set; } = "General";
+        public decimal MultiplicadorPrecioMinimo { get; set; } = 2m;
+        public decimal MultiplicadorPrecioIdeal { get; set; } = 3m;
+        public List<PartidaCostoFormulario> Partidas { get; set; } = new();
+    }
+
+    private sealed class PartidaCostoFormulario
+    {
+        public string Concepto { get; set; } = "";
+        public decimal Cantidad { get; set; } = 1m;
+        public decimal CostoUnitarioUSD { get; set; }
+        public int Orden { get; set; }
+    }
+
+    private sealed class PaqueteCreadoDto
+    {
+        public Guid Id { get; set; }
+    }
+
+    private sealed class FichaCostoPaqueteDto
+    {
+        public Guid Id { get; set; }
+        public string Contexto { get; set; } = "";
+        public decimal CostoTotalUSD { get; set; }
+        public decimal PrecioMinimoUSD { get; set; }
+        public decimal PrecioIdealUSD { get; set; }
+        public decimal PrecioVentaUSD { get; set; }
+        public decimal MultiplicadorPrecioMinimo { get; set; }
+        public decimal MultiplicadorPrecioIdeal { get; set; }
+        public List<PartidaCostoPaqueteDto> Partidas { get; set; } = new();
+    }
+
+    private sealed class PartidaCostoPaqueteDto
+    {
+        public string Concepto { get; set; } = "";
+        public decimal Cantidad { get; set; }
+        public decimal CostoUnitarioUSD { get; set; }
+        public decimal SubtotalUSD { get; set; }
+        public int Orden { get; set; }
+    }
+}
