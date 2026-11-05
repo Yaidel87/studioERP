@@ -25,7 +25,7 @@ public class PersonalController : ControllerBase
         var staff = await _context.Staffs
             .Include(s => s.Usuario)
             .Include(s => s.TiposStaff)
-            .Where(s => !s.IsDeleted)
+            .Where(s => !s.IsDeleted && !s.Usuario.IsDeleted && s.Usuario.Activo)
             .Select(s => new
             {
                 s.Id,
@@ -33,8 +33,8 @@ public class PersonalController : ControllerBase
                 NombreUsuario = s.Usuario.NombreCompleto,
                 Email = s.Usuario.Email,
                 Foto = s.Usuario.PhotoUrl,
-                Especialidades = s.TiposStaff.Select(t => t.Nombre).ToList(),
-                EspecialidadIds = s.TiposStaff.Select(t => t.Id).ToList()
+                Especialidades = s.TiposStaff.Where(t => !t.IsDeleted).Select(t => t.Nombre).ToList(),
+                EspecialidadIds = s.TiposStaff.Where(t => !t.IsDeleted).Select(t => t.Id).ToList()
             })
             .ToListAsync();
 
@@ -42,60 +42,73 @@ public class PersonalController : ControllerBase
     }
 
     // 2. CREAR STAFF (Con la entidad especificada para evitar conflictos)
-    public record CrearStaffRequest(Guid UsuarioId, List<Guid> TipoStaffIds);
+    public record CrearStaffRequest(Guid UsuarioId, List<Guid>? TipoStaffIds);
 
     [HttpPost]
     public async Task<IActionResult> Crear(CrearStaffRequest request)
     {
-        var usuarioExiste = await _context.Usuarios.AnyAsync(u => u.Id == request.UsuarioId);
-        if (!usuarioExiste) return BadRequest("El usuario no existe.");
+        if (request.UsuarioId == Guid.Empty)
+            return BadRequest("Debe seleccionar un usuario válido.");
+        var usuarioExiste = await _context.Usuarios.AnyAsync(u => u.Id == request.UsuarioId && !u.IsDeleted && u.Activo);
+        if (!usuarioExiste) return BadRequest("El usuario no existe o está inactivo.");
 
-        var yaEsStaff = await _context.Staffs.AnyAsync(s => s.UsuarioId == request.UsuarioId);
+        var tipoIds = request.TipoStaffIds?.Distinct().ToList() ?? new List<Guid>();
+        var tipos = await _context.TiposStaff
+            .Where(t => !t.IsDeleted && tipoIds.Contains(t.Id))
+            .ToListAsync();
+        if (tipos.Count != tipoIds.Count)
+            return BadRequest("Una o más especialidades no existen o están inactivas.");
+
+        var yaEsStaff = await _context.Staffs.AnyAsync(s => s.UsuarioId == request.UsuarioId && !s.IsDeleted);
         if (yaEsStaff) return BadRequest("Este usuario ya está registrado como staff.");
 
-        // Usamos la ruta completa para evitar el conflicto con el namespace
-        var staff = new StudioERP.Domain.Entities.Staff 
-        { 
-            UsuarioId = request.UsuarioId 
-        };
-
-        var tipos = await _context.TiposStaff
-            .Where(t => request.TipoStaffIds.Contains(t.Id))
-            .ToListAsync();
-
-        foreach (var tipo in tipos)
+        var staff = await _context.Staffs
+            .Include(s => s.TiposStaff)
+            .FirstOrDefaultAsync(s => s.UsuarioId == request.UsuarioId && s.IsDeleted);
+        if (staff == null)
         {
-            staff.TiposStaff.Add(tipo);
+            staff = new StudioERP.Domain.Entities.Staff { UsuarioId = request.UsuarioId };
+            _context.Staffs.Add(staff);
+        }
+        else
+        {
+            staff.IsDeleted = false;
+            staff.TiposStaff.Clear();
         }
 
-        _context.Staffs.Add(staff);
+        foreach (var tipo in tipos)
+            staff.TiposStaff.Add(tipo);
+
         await _context.SaveChangesAsync();
 
         return Ok(new { mensaje = "Staff creado correctamente", id = staff.Id });
     }
 
     // 3. ACTUALIZAR ESPECIALIDADES
-    public record ActualizarEspecialidadesRequest(List<Guid> TipoStaffIds);
+    public record ActualizarEspecialidadesRequest(List<Guid>? TipoStaffIds);
 
     [HttpPut("{id}/especialidades")]
     public async Task<IActionResult> ActualizarEspecialidades(Guid id, ActualizarEspecialidadesRequest request)
     {
         var staff = await _context.Staffs
             .Include(s => s.TiposStaff)
-            .FirstOrDefaultAsync(s => s.Id == id);
+            .Include(s => s.Usuario)
+            .FirstOrDefaultAsync(s => s.Id == id && !s.IsDeleted);
             
         if (staff == null) return NotFound("Staff no encontrado.");
+        if (staff.Usuario.IsDeleted || !staff.Usuario.Activo)
+            return BadRequest("No se pueden actualizar especialidades de un usuario inactivo.");
+
+        var tipoIds = request.TipoStaffIds?.Distinct().ToList() ?? new List<Guid>();
+        var nuevosTipos = await _context.TiposStaff
+            .Where(t => !t.IsDeleted && tipoIds.Contains(t.Id))
+            .ToListAsync();
+        if (nuevosTipos.Count != tipoIds.Count)
+            return BadRequest("Una o más especialidades no existen o están inactivas.");
 
         staff.TiposStaff.Clear();
-
-        var nuevosTipos = await _context.TiposStaff
-            .Where(t => request.TipoStaffIds.Contains(t.Id))
-            .ToListAsync();
-
         foreach (var tipo in nuevosTipos)
-        {
             staff.TiposStaff.Add(tipo);
-        }
 
         await _context.SaveChangesAsync();
         return Ok(new { mensaje = "Especialidades actualizadas correctamente." });
@@ -108,7 +121,7 @@ public class PersonalController : ControllerBase
     [HttpGet("tipos")]
     public async Task<IActionResult> ObtenerTipos()
     {
-        var tipos = await _context.TiposStaff.ToListAsync();
+        var tipos = await _context.TiposStaff.Where(t => !t.IsDeleted).ToListAsync();
         return Ok(tipos);
     }
 
@@ -117,10 +130,13 @@ public class PersonalController : ControllerBase
     [HttpPost("tipos")]
     public async Task<IActionResult> CrearTipo(TipoStaffRequest request)
     {
-        if (await _context.TiposStaff.AnyAsync(t => t.Nombre == request.Nombre))
+        var nombre = request.Nombre?.Trim();
+        if (string.IsNullOrWhiteSpace(nombre))
+            return BadRequest("El nombre de la especialidad es obligatorio.");
+        if (await _context.TiposStaff.AnyAsync(t => t.Nombre == nombre && !t.IsDeleted))
             return BadRequest("El tipo de staff ya existe.");
 
-        var tipo = new TipoStaff { Nombre = request.Nombre };
+        var tipo = new TipoStaff { Nombre = nombre };
         _context.TiposStaff.Add(tipo);
         await _context.SaveChangesAsync();
 
@@ -131,15 +147,19 @@ public class PersonalController : ControllerBase
     public async Task<IActionResult> EliminarTipo(Guid id)
     {
         var tipo = await _context.TiposStaff
-            .Include(t => t.Staffs)
-            .FirstOrDefaultAsync(t => t.Id == id);
+            .FirstOrDefaultAsync(t => t.Id == id && !t.IsDeleted);
             
         if (tipo == null) return NotFound("Especialidad no encontrada.");
         
-        if (tipo.Staffs.Any())
+        var tienePersonalActivo = await _context.Staffs.AnyAsync(s =>
+            s.TiposStaff.Any(t => t.Id == id) &&
+            !s.IsDeleted &&
+            !s.Usuario.IsDeleted &&
+            s.Usuario.Activo);
+        if (tienePersonalActivo)
             return BadRequest("No se puede eliminar la especialidad porque tiene personal asignado.");
 
-        _context.TiposStaff.Remove(tipo);
+        tipo.IsDeleted = true;
         await _context.SaveChangesAsync();
 
         return Ok(new { mensaje = "Especialidad eliminada correctamente." });

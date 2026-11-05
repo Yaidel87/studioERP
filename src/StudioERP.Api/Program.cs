@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
 using Microsoft.OpenApi; // Namespace unificado de OpenAPI en .NET 10
 
 var builder = WebApplication.CreateBuilder(args);
@@ -52,9 +53,56 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             // VITAL PARA QUE FUNCIONE [Authorize(Roles = "Admin")]
             RoleClaimType = ClaimTypes.Role
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var userIdValue = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+                if (!Guid.TryParse(userIdValue, out var userId))
+                {
+                    context.Fail("El token no contiene un identificador de usuario válido.");
+                    return;
+                }
+
+                await using var scope = context.HttpContext.RequestServices.CreateAsyncScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<StudioDbContext>();
+                var user = await dbContext.Usuarios
+                    .AsNoTracking()
+                    .Where(user => user.Id == userId)
+                    .Select(user => new
+                    {
+                        user.Activo,
+                        user.IsDeleted,
+                        RoleName = user.Rol.Nombre
+                    })
+                    .FirstOrDefaultAsync(
+                        context.HttpContext.RequestAborted);
+
+                if (user == null || !user.Activo || user.IsDeleted)
+                {
+                    context.Fail("La cuenta está inactiva o fue eliminada.");
+                    return;
+                }
+
+                if (context.Principal?.Identity is ClaimsIdentity identity)
+                {
+                    foreach (var roleClaim in identity.FindAll(identity.RoleClaimType).ToList())
+                        identity.RemoveClaim(roleClaim);
+
+                    identity.AddClaim(new Claim(identity.RoleClaimType, user.RoleName));
+                }
+            }
+        };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
 
 builder.Services.AddControllers(options =>
 {

@@ -34,9 +34,33 @@
                             <label class="form-label small fw-bold">Nombre Completo</label>
                             <input class="form-control" @bind="UsuarioEditando.NombreCompleto" />
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Carnet de Identidad</label>
+                            <input class="form-control" @bind="UsuarioEditando.CarnetIdentidad" />
+                        </div>
                         <div class="col-md-12">
                             <label class="form-label small fw-bold">Email</label>
-                            <input type="email" class="form-control" @bind="UsuarioEditando.Email" />
+                            <input type="email" class="form-control" @bind="UsuarioEditando.Email" required />
+                        </div>
+                        <div class="col-md-12">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label small fw-bold mb-0">Otros contactos</label>
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AgregarContacto">Agregar</button>
+                            </div>
+                            @foreach (var contacto in UsuarioEditando.Contactos)
+                            {
+                                <div class="row g-2 mb-2">
+                                    <div class="col-4">
+                                        <select class="form-select" @bind="contacto.Tipo">
+                                            <option value="Telefono">Teléfono</option>
+                                            <option value="Email">Email</option>
+                                            <option value="Direccion">Dirección</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-7"><input class="form-control" @bind="contacto.Valor" /></div>
+                                    <div class="col-1"><button type="button" class="btn btn-outline-danger" @onclick="() => UsuarioEditando.Contactos.Remove(contacto)">×</button></div>
+                                </div>
+                            }
                         </div>
                         <div class="col-md-12">
                             <label class="form-label small fw-bold">Rol del Sistema</label>
@@ -137,6 +161,19 @@
     private async Task Guardar()
     {
         ErrorEdicion = "";
+        if (string.IsNullOrWhiteSpace(UsuarioEditando.Username) ||
+            string.IsNullOrWhiteSpace(UsuarioEditando.NombreCompleto) ||
+            string.IsNullOrWhiteSpace(UsuarioEditando.Email) ||
+            UsuarioEditando.RolId == Guid.Empty)
+        {
+            ErrorEdicion = "Usuario, nombre completo, email y rol son obligatorios.";
+            return;
+        }
+        if (!new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(UsuarioEditando.Email))
+        {
+            ErrorEdicion = "Escribe un email válido.";
+            return;
+        }
         Guardando = true;
         StateHasChanged();
 
@@ -149,9 +186,14 @@
             { 
                 Username = UsuarioEditando.Username,
                 NombreCompleto = UsuarioEditando.NombreCompleto, 
+                CarnetIdentidad = UsuarioEditando.CarnetIdentidad,
                 Email = UsuarioEditando.Email, 
                 RolId = UsuarioEditando.RolId,
-                Activo = UsuarioEditando.Activo
+                Activo = UsuarioEditando.Activo,
+                Contactos = UsuarioEditando.Contactos
+                    .Where(contacto => !string.IsNullOrWhiteSpace(contacto.Valor))
+                    .Select(contacto => new { contacto.Tipo, Valor = contacto.Valor.Trim() })
+                    .ToList()
             };
 
             var req = new HttpRequestMessage(HttpMethod.Put, $"api/v1/Usuarios/{UsuarioEditando.Id}/admin");
@@ -186,15 +228,25 @@
         await MostrarChanged.InvokeAsync(false);
     }
 
+    private void AgregarContacto() => UsuarioEditando.Contactos.Add(new ContactoDto { Tipo = "Telefono" });
+
     // --- CLASES DTO ---
     public class UsuarioEditDto
     {
         public Guid Id { get; set; }
         public string Username { get; set; } = "";
         public string NombreCompleto { get; set; } = "";
+        public string CarnetIdentidad { get; set; } = "";
         public string Email { get; set; } = "";
         public Guid RolId { get; set; }
         public bool Activo { get; set; }
+        public List<ContactoDto> Contactos { get; set; } = new();
+    }
+
+    public class ContactoDto
+    {
+        public string Tipo { get; set; } = "Telefono";
+        public string Valor { get; set; } = "";
     }
 
     public class RolDto

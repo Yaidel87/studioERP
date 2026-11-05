@@ -1,6 +1,5 @@
 @using System.Net.Http.Json
 @using StudioERP.Web.Services
-@using System.Text.Json
 
 @inject HttpClient Http
 @inject IJSRuntime JS
@@ -13,139 +12,58 @@
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title fw-bold">
-                        @(ModoEdicion ? "Editando Producto" : "Detalle del Producto")
-                    </h5>
+                    <h5 class="modal-title fw-bold">Producto</h5>
                     <button type="button" class="btn-close" @onclick="Cerrar"></button>
                 </div>
                 <div class="modal-body">
-                    @if (!string.IsNullOrEmpty(ErrorMensaje)) { <div class="alert alert-danger">@ErrorMensaje</div> }
-                    
-                    @if (Producto == null) 
-                    { 
-                        <p class="text-center text-muted"><span class="spinner-border spinner-border-sm me-2"></span> Cargando producto...</p> 
+                    @if (!string.IsNullOrWhiteSpace(ErrorMensaje))
+                    {
+                        <div class="alert alert-danger">@ErrorMensaje</div>
+                    }
+                    @if (Producto == null)
+                    {
+                        <p class="text-center"><span class="spinner-border spinner-border-sm me-2"></span>Cargando...</p>
                     }
                     else
                     {
-                        <!-- BOTÓN PARA ACTIVAR MODO EDICIÓN -->
                         @if (!ModoEdicion)
                         {
                             <div class="alert alert-info d-flex justify-content-between align-items-center">
-                                <span><i class="bi bi-eye"></i> Modo Solo Lectura (evita cambios accidentales)</span>
-                                <button class="btn btn-sm btn-primary" @onclick="() => ModoEdicion = true">
-                                    <i class="bi bi-pencil"></i> Habilitar Edición
-                                </button>
+                                <span>Modo de solo lectura</span>
+                                <button class="btn btn-sm btn-primary" @onclick="() => ModoEdicion = true">Habilitar edición</button>
                             </div>
                         }
-                        else
-                        {
-                            <div class="alert alert-warning d-flex justify-content-between align-items-center">
-                                <span><i class="bi bi-exclamation-triangle"></i> Modo Edición Activado</span>
-                                <button class="btn btn-sm btn-secondary" @onclick="() => ModoEdicion = false">
-                                    <i class="bi bi-x-circle"></i> Cancelar Edición
-                                </button>
+                        <div class="row g-3">
+                            <div class="col-md-7">
+                                <label class="form-label">Nombre del producto</label>
+                                <input class="form-control" @bind="Producto.Nombre" disabled="@(!ModoEdicion)" maxlength="200" />
                             </div>
-                        }
-
-                        <!-- CAMPOS DEL PRODUCTO -->
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-8">
-                                <label class="form-label small fw-bold">Nombre del Producto</label>
-                                <input class="form-control" @bind="Producto.Nombre" disabled="@(!ModoEdicion)" />
+                            <div class="col-md-5">
+                                <label class="form-label">Precio base de venta (USD)</label>
+                                <input type="number" class="form-control" min="0" step="0.01" @bind="Producto.PrecioVentaBaseUSD" disabled="@(!ModoEdicion)" />
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label small fw-bold">Precio Venta (USD)</label>
-                                <input type="number" class="form-control" @bind="Producto.PrecioVentaBaseUSD" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" />
+                            <div class="col-12">
+                                <label class="form-label">Categoría</label>
+                                <select class="form-select" @bind="Producto.CategoriaProductoId" disabled="@(!ModoEdicion)">
+                                    <option value="">Sin categoría</option>
+                                    @foreach (var categoria in Categorias)
+                                    {
+                                        <option value="@categoria.Id">@categoria.Nombre</option>
+                                    }
+                                </select>
                             </div>
                         </div>
-
-                        <div class="mb-4">
-                            <label class="form-label small fw-bold">Categoría</label>
-                            <select class="form-select" @bind="Producto.CategoriaProductoId" @bind:after="OnCategoriaCambiada" disabled="@(!ModoEdicion)">
-                                <option value="@Guid.Empty">Seleccione...</option>
-                                @foreach (var c in ListaCategorias)
-                                {
-                                    <option value="@c.Id">@c.Nombre</option>
-                                }
-                            </select>
+                        <div class="alert alert-info mt-3 mb-0">
+                            Los costos y precios por formato/contexto se administran en <strong>Fichas de costo</strong>.
                         </div>
-
-                        <!-- FICHA DE COSTO DINÁMICA -->
-                        @if (CategoriaNombre == "Álbumes")
-                        {
-                            <h6 class="fw-bold border-bottom pb-2 mb-3">Ficha de Costo: Álbumes</h6>
-                            <div class="row g-3">
-                                <div class="col-md-6"><label class="form-label small fw-bold">Formato</label><input class="form-control" @bind="Costo.Formato" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Confección</label><input type="number" class="form-control" @bind="Costo.CostoConfeccion" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Esquinero</label><input type="number" class="form-control" @bind="Costo.CostoEsquinero" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Diseño</label><input type="number" class="form-control" @bind="Costo.CostoDiseno" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Otros Gastos</label><input type="number" class="form-control" @bind="Costo.OtrosGastos" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                            </div>
-                        }
-                        else if (CategoriaNombre == "Fotos Sueltas")
-                        {
-                             <h6 class="fw-bold border-bottom pb-2 mb-3">Ficha de Costo: Fotos Sueltas</h6>
-                             <div class="row g-3">
-                                <div class="col-md-6"><label class="form-label small fw-bold">Formato</label><input class="form-control" @bind="Costo.Formato" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Impresión</label><input type="number" class="form-control" @bind="Costo.CostoImpresion" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Edición</label><input type="number" class="form-control" @bind="Costo.CostoEdicion" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Otros Gastos</label><input type="number" class="form-control" @bind="Costo.OtrosGastos" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                             </div>
-                        }
-                        else if (CategoriaNombre == "Enmarcados")
-                        {
-                            <h6 class="fw-bold border-bottom pb-2 mb-3">Ficha de Costo: Enmarcados</h6>
-                            <div class="row g-3">
-                                <div class="col-md-6"><label class="form-label small fw-bold">Formato</label><input class="form-control" @bind="Costo.Formato" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Enmarcado</label><input type="number" class="form-control" @bind="Costo.CostoEnmarcado" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Edición</label><input type="number" class="form-control" @bind="Costo.CostoEdicion" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Otros Gastos</label><input type="number" class="form-control" @bind="Costo.OtrosGastos" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                            </div>
-                        }
-                        else if (CategoriaNombre == "Photobooks")
-                        {
-                            <h6 class="fw-bold border-bottom pb-2 mb-3">Ficha de Costo: Photobooks</h6>
-                            <div class="row g-3">
-                                <div class="col-md-6"><label class="form-label small fw-bold">Formato</label><input class="form-control" @bind="Costo.Formato" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Portada</label><input type="number" class="form-control" @bind="Costo.CostoPortada" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Pliego</label><input type="number" class="form-control" @bind="Costo.CostoPliego" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Cant. Pliegos</label><input type="number" class="form-control" @bind="Costo.CantidadPliegos" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Montaje</label><input type="number" class="form-control" @bind="Costo.CostoMontaje" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Diseño</label><input type="number" class="form-control" @bind="Costo.CostoDiseno" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                            </div>
-                        }
-                        else if (CategoriaNombre == "Extras")
-                        {
-                            <h6 class="fw-bold border-bottom pb-2 mb-3">Ficha de Costo: Extras</h6>
-                            <div class="row g-3">
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Base</label><input type="number" class="form-control" @bind="Costo.CostoBase" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Costo Diseño</label><input type="number" class="form-control" @bind="Costo.CostoDiseno" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                                <div class="col-md-6"><label class="form-label small fw-bold">Otros Gastos</label><input type="number" class="form-control" @bind="Costo.OtrosGastos" @bind:after="CalcularTotales" disabled="@(!ModoEdicion)" /></div>
-                            </div>
-                        }
-
-                        <!-- RESUMEN DE GANANCIA -->
-                        @if (Producto.CategoriaProductoId != null)
-                        {
-                            <div class="card bg-light mt-4 border-0">
-                                <div class="card-body p-3 text-center">
-                                    <div class="row">
-                                        <div class="col-4"><small class="text-muted d-block">Costo Total</small><h5 class="text-danger">$@CostoTotal</h5></div>
-                                        <div class="col-4 border-start border-end"><small class="text-muted d-block">Precio Venta</small><h5 class="text-success">$@Producto.PrecioVentaBaseUSD</h5></div>
-                                        <div class="col-4"><small class="text-muted d-block">Ganancia</small><h5 class="@(Ganancia >= 0 ? "text-primary" : "text-danger")">$@Ganancia</h5></div>
-                                    </div>
-                                </div>
-                            </div>
-                        }
                     }
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" @onclick="Cerrar">Cerrar</button>
-                    @if (ModoEdicion)
+                    @if (ModoEdicion && Producto != null)
                     {
                         <button class="btn btn-primary" @onclick="Guardar" disabled="@Guardando">
-                            @if (Guardando) { <span class="spinner-border spinner-border-sm me-2"></span> }
-                            Guardar Cambios
+                            @(Guardando ? "Guardando..." : "Guardar cambios")
                         </button>
                     }
                 </div>
@@ -155,151 +73,123 @@
 }
 
 @code {
-    // Parámetros del Componente
-    [Parameter] public bool Mostrar { get; set; } = false;
+    [Parameter] public bool Mostrar { get; set; }
     [Parameter] public EventCallback<bool> MostrarChanged { get; set; }
     [Parameter] public EventCallback OnGuardado { get; set; }
     [Parameter] public Guid ProductoId { get; set; }
 
-    // Variables de estado
     private ProductoDto? Producto;
-    private CostoDetalleDto Costo = new();
-    private List<CategoriaDto> ListaCategorias = new();
-    private string CategoriaNombre = "";
-    
-    private bool ModoEdicion = false; // <-- CONTROL DEL MODO LECTURA/EDICIÓN
-    private bool Guardando = false;
+    private List<CategoriaDto> Categorias = new();
+    private bool ModoEdicion;
+    private bool Guardando;
     private string ErrorMensaje = "";
-    private decimal CostoTotal = 0;
-    private decimal Ganancia = 0;
+    private Guid ProductoIdCargado;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (Mostrar && ProductoId != Guid.Empty)
+        if (Mostrar && (Producto == null || ProductoIdCargado != ProductoId))
         {
-            Producto = null; // Mostramos spinner
-            ModoEdicion = false; // Siempre inicia en modo lectura
+            Producto = null;
+            ProductoIdCargado = ProductoId;
+            ModoEdicion = false;
             ErrorMensaje = "";
+            await AsegurarToken();
             await CargarCategorias();
-            await CargarProducto(ProductoId);
+            await CargarProducto();
         }
     }
 
     private async Task CargarCategorias()
     {
-        try
+        using var request = CrearRequest(HttpMethod.Get, "api/v1/Catalogos/categorias");
+        using var response = await Http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
         {
-            if (string.IsNullOrEmpty(TokenService.Token)) 
-                TokenService.Token = await JS.InvokeAsync<string>("leerToken");
-
-            var req = new HttpRequestMessage(HttpMethod.Get, "api/v1/Catalogos/categorias");
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
-            var res = await Http.SendAsync(req);
-            if (res.IsSuccessStatusCode) 
-                ListaCategorias = await res.Content.ReadFromJsonAsync<List<CategoriaDto>>() ?? new();
+            ErrorMensaje = await ObtenerError(response);
+            return;
         }
-        catch { }
+        Categorias = await response.Content.ReadFromJsonAsync<List<CategoriaDto>>() ?? new();
     }
 
-    private async Task CargarProducto(Guid id)
+    private async Task CargarProducto()
     {
-        try
+        using var request = CrearRequest(HttpMethod.Get, $"api/v1/Catalogos/productos/{ProductoId}");
+        using var response = await Http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
         {
-            var req = new HttpRequestMessage(HttpMethod.Get, $"api/v1/Catalogos/productos/{id}");
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
-            var res = await Http.SendAsync(req);
-            
-            if (res.IsSuccessStatusCode)
-            {
-                Producto = await res.Content.ReadFromJsonAsync<ProductoDto>();
-                if (Producto != null)
-                {
-                    CategoriaNombre = ListaCategorias.FirstOrDefault(c => c.Id == Producto.CategoriaProductoId)?.Nombre ?? "";
-                    if (!string.IsNullOrEmpty(Producto.DetalleCosto))
-                        Costo = JsonSerializer.Deserialize<CostoDetalleDto>(Producto.DetalleCosto) ?? new();
-                    CalcularTotales();
-                }
-            }
+            ErrorMensaje = await ObtenerError(response);
+            return;
         }
-        catch { }
-    }
-
-    private void OnCategoriaCambiada()
-    {
-        CategoriaNombre = ListaCategorias.FirstOrDefault(c => c.Id == Producto?.CategoriaProductoId)?.Nombre ?? "";
-        CalcularTotales();
-    }
-
-    private void CalcularTotales()
-    {
-        if (Costo == null) return;
-        CostoTotal = Costo.CostoImpresion + Costo.CostoEdicion + Costo.OtrosGastos + Costo.CostoEnmarcado + 
-                     Costo.CostoConfeccion + Costo.CostoEsquinero + Costo.CostoDiseno + Costo.CostoPortada + 
-                     Costo.CostoPliego + Costo.CostoMontaje + Costo.CostoBase;
-        
-        if (CategoriaNombre == "Photobooks") CostoTotal += (Costo.CostoPliego * Costo.CantidadPliegos);
-        if (Producto != null) Ganancia = Producto.PrecioVentaBaseUSD - CostoTotal;
+        Producto = await response.Content.ReadFromJsonAsync<ProductoDto>();
     }
 
     private async Task Guardar()
     {
         if (Producto == null) return;
-        Guardando = true;
-        StateHasChanged();
+        ErrorMensaje = "";
+        if (string.IsNullOrWhiteSpace(Producto.Nombre))
+        {
+            ErrorMensaje = "El nombre del producto es obligatorio.";
+            return;
+        }
 
+        Guardando = true;
         try
         {
-            var request = new 
-            { 
-                Nombre = Producto.Nombre, 
-                PrecioVentaBaseUSD = Producto.PrecioVentaBaseUSD, 
-                CategoriaProductoId = Producto.CategoriaProductoId, 
-                DetalleCosto = JsonSerializer.Serialize(Costo) 
-            };
-
-            var req = new HttpRequestMessage(HttpMethod.Put, $"api/v1/Catalogos/productos/{Producto.Id}");
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
-            req.Content = JsonContent.Create(request);
-            var res = await Http.SendAsync(req);
-
-            if (res.IsSuccessStatusCode)
+            using var request = CrearRequest(HttpMethod.Put, $"api/v1/Catalogos/productos/{Producto.Id}");
+            request.Content = JsonContent.Create(Producto);
+            using var response = await Http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
             {
-                await OnGuardado.InvokeAsync();
-                await Cerrar();
+                ErrorMensaje = await ObtenerError(response);
+                return;
             }
+            await OnGuardado.InvokeAsync();
+            await Cerrar();
         }
-        catch { }
-        finally { Guardando = false; StateHasChanged(); }
+        catch (HttpRequestException ex)
+        {
+            ErrorMensaje = $"Error de conexión: {ex.Message}";
+        }
+        finally
+        {
+            Guardando = false;
+        }
     }
 
-    private async Task Cerrar() => await MostrarChanged.InvokeAsync(false);
-
-    // --- DTOs ---
-    public class CategoriaDto { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
-    
-    public class ProductoDto 
-    { 
-        public Guid Id { get; set; } 
-        public string Nombre { get; set; } = ""; 
-        public decimal PrecioVentaBaseUSD { get; set; } 
-        public Guid? CategoriaProductoId { get; set; } 
-        public string? DetalleCosto { get; set; } 
+    private async Task AsegurarToken()
+    {
+        if (string.IsNullOrWhiteSpace(TokenService.Token))
+            TokenService.Token = await JS.InvokeAsync<string>("leerToken");
     }
-    
-    public class CostoDetalleDto 
-    { 
-        public string Formato { get; set; } = ""; 
-        public decimal OtrosGastos { get; set; } 
-        public decimal CostoImpresion { get; set; } 
-        public decimal CostoEdicion { get; set; } 
-        public decimal CostoEnmarcado { get; set; } 
-        public decimal CostoConfeccion { get; set; } 
-        public decimal CostoEsquinero { get; set; } 
-        public decimal CostoDiseno { get; set; } 
-        public decimal CostoPortada { get; set; } 
-        public decimal CostoPliego { get; set; } 
-        public int CantidadPliegos { get; set; } 
-        public decimal CostoMontaje { get; set; } 
-        public decimal CostoBase { get; set; } 
+
+    private HttpRequestMessage CrearRequest(HttpMethod method, string ruta)
+    {
+        var request = new HttpRequestMessage(method, ruta);
+        if (!string.IsNullOrWhiteSpace(TokenService.Token))
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+        return request;
+    }
+
+    private static async Task<string> ObtenerError(HttpResponseMessage response)
+    {
+        var contenido = await response.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(contenido) ? $"La API respondió con {(int)response.StatusCode}." : contenido.Trim('"');
+    }
+
+    private Task Cerrar() => MostrarChanged.InvokeAsync(false);
+
+    private sealed class CategoriaDto
+    {
+        public Guid Id { get; set; }
+        public string Nombre { get; set; } = "";
+    }
+
+    private sealed class ProductoDto
+    {
+        public Guid Id { get; set; }
+        public string Nombre { get; set; } = "";
+        public decimal PrecioVentaBaseUSD { get; set; }
+        public Guid? CategoriaProductoId { get; set; }
     }
 }

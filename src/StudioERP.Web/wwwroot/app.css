@@ -319,7 +319,7 @@ html, body {
         left: 0;
         top: 64px;
         bottom: 0;
-        transform: translateX(-100%);
+        transform: translateX(calc(-100% + 36px));
         z-index: 999;
         transition: transform 0.3s ease-in-out;
         box-shadow: 2px 0 10px rgba(0,0,0,0.2);
@@ -327,6 +327,23 @@ html, body {
     
     .sidebar.open {
         transform: translateX(0);
+    }
+
+    .sidebar-peek {
+        position: absolute;
+        top: 16px;
+        right: 0;
+        display: grid;
+        width: 36px;
+        height: 48px;
+        place-items: center;
+        border: 0;
+        border-radius: 8px 0 0 8px;
+        background: #4f46e5;
+        color: #fff;
+        font-size: 1.75rem;
+        line-height: 1;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25);
     }
 
     .content {
@@ -355,10 +372,30 @@ html, body {
 
 #dashboard-calendar .fc-daygrid-day.dashboard-day-session,
 #dashboard-calendar .fc-daygrid-day.dashboard-day-session .fc-daygrid-day-frame {
-    background-color: #bfdbfe !important;
+    background-color: #1e3a8a !important;
+}
+
+#dashboard-calendar .fc-daygrid-day.dashboard-day-session .fc-daygrid-day-number {
+    color: #fff !important;
 }
 
 #dashboard-calendar .fc-daygrid-day.dashboard-day-blocked,
 #dashboard-calendar .fc-daygrid-day.dashboard-day-blocked .fc-daygrid-day-frame {
-    background-color: #fecaca !important;
+    background-color: #991b1b !important;
+}
+
+#dashboard-calendar .fc-daygrid-day.dashboard-day-blocked .fc-daygrid-day-number {
+    color: #fff !important;
+}
+
+#dashboard-calendar .fc-daygrid-day.dashboard-day-session .fc-daygrid-event {
+    margin: 2px 3px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    line-height: 1.2;
+}
+
+#dashboard-calendar .fc-daygrid-day.dashboard-day-session .fc-daygrid-event .fc-event-title,
+#dashboard-calendar .fc-daygrid-day.dashboard-day-session .fc-daygrid-event .fc-event-time {
+    font-weight: 600;
 }

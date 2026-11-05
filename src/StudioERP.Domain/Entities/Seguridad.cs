@@ -27,10 +27,12 @@ public class Usuario : BaseEntity
 {
     public string Username { get; set; } = string.Empty;
     public string NombreCompleto { get; set; } = string.Empty;
+    public string? CarnetIdentidad { get; set; }
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
     public string PhotoUrl { get; set; } = string.Empty; // <-- AGREGAR ESTO
     public bool Activo { get; set; } = true;
+    public ICollection<Contacto> Contactos { get; set; } = new List<Contacto>();
     
     public Guid RolId { get; set; }
     public Rol Rol { get; set; } = null!;

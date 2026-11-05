@@ -1,0 +1,379 @@
+@page "/ventas/fichas-costo"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@using System.Net.Http.Json
+@using StudioERP.Web.Services
+
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject TokenService TokenService
+
+<PageTitle>Fichas de costo - StudioERP</PageTitle>
+
+<h4 class="fw-bold mb-4">Fichas de costo por producto, variante y contexto</h4>
+
+@if (!string.IsNullOrWhiteSpace(Mensaje))
+{
+    <div class="alert @(EsError ? "alert-danger" : "alert-success")">@Mensaje</div>
+}
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Producto</label>
+                <select class="form-select" @bind="ProductoId" @bind:after="SeleccionarProducto">
+                    <option value="">Seleccionar producto...</option>
+                    @foreach (var producto in Productos)
+                    {
+                        <option value="@producto.Id">@producto.Nombre</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Variante o formato</label>
+                <input class="form-control" @bind="Formulario.Variante" maxlength="120" placeholder="Ej. 8x10, 20 fotos 8x12" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Taller, editor u otro contexto</label>
+                <input class="form-control" @bind="Formulario.Contexto" maxlength="250" placeholder="Ej. Taller A / Editor 1" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Múltiplo para precio mínimo</label>
+                <input type="number" class="form-control" min="0.01" step="0.01" @bind="Formulario.MultiplicadorPrecioMinimo" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Múltiplo para precio ideal</label>
+                <input type="number" class="form-control" min="0.01" step="0.01" @bind="Formulario.MultiplicadorPrecioIdeal" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Precio de venta final (USD)</label>
+                <input type="number" class="form-control" min="0" step="0.01" @bind="Formulario.PrecioVentaUSD" />
+            </div>
+        </div>
+
+        <hr class="my-4" />
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h5 class="mb-1">Partidas de costo</h5>
+                <small class="text-muted">Los recargos porcentuales se calculan sobre las partidas fijas marcadas como base.</small>
+            </div>
+            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="AgregarPartida">
+                <i class="bi bi-plus-lg"></i> Agregar partida
+            </button>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Concepto</th>
+                        <th style="min-width: 130px">Tipo</th>
+                        <th style="min-width: 110px">Cantidad</th>
+                        <th style="min-width: 150px">Costo unitario (USD)</th>
+                        <th style="min-width: 125px">Porcentaje</th>
+                        <th>Base %</th>
+                        <th class="text-end">Subtotal (USD)</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var partida in Formulario.Partidas)
+                    {
+                        <tr>
+                            <td><input class="form-control form-control-sm" @bind="partida.Concepto" placeholder="Impresión, edición..." /></td>
+                            <td>
+                                <select class="form-select form-select-sm" @bind="partida.TipoCalculo">
+                                    <option value="Fijo">Fijo</option>
+                                    <option value="Porcentaje">Porcentaje</option>
+                                </select>
+                            </td>
+                            <td><input type="number" min="0.0001" step="0.0001" class="form-control form-control-sm" @bind="partida.Cantidad" disabled="@(partida.TipoCalculo == "Porcentaje")" /></td>
+                            <td><input type="number" min="0" step="0.0001" class="form-control form-control-sm" @bind="partida.CostoUnitarioUSD" disabled="@(partida.TipoCalculo == "Porcentaje")" /></td>
+                            <td><input type="number" min="0" max="100" step="0.01" class="form-control form-control-sm" @bind="partida.Porcentaje" disabled="@(partida.TipoCalculo != "Porcentaje")" /></td>
+                            <td class="text-center">
+                                <input type="checkbox" class="form-check-input" @bind="partida.IncluirEnBasePorcentual" disabled="@(partida.TipoCalculo != "Fijo")" />
+                            </td>
+                            <td class="text-end">@CalcularSubtotal(partida).ToString("N2")</td>
+                            <td class="text-end">
+                                <button type="button" class="btn btn-sm btn-outline-danger" title="Quitar partida" @onclick="() => QuitarPartida(partida)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                    @if (Formulario.Partidas.Count == 0)
+                    {
+                        <tr><td colspan="8" class="text-center text-muted py-3">Agrega conceptos como impresión, edición, diseño o personal.</td></tr>
+                    }
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <th colspan="6" class="text-end">Costo total calculado</th>
+                        <th class="text-end">@CostoTotal.ToString("N2") USD</th>
+                        <th></th>
+                    </tr>
+                    <tr>
+                        <td colspan="6" class="text-end">Precio mínimo / ideal sugerido</td>
+                        <td class="text-end">@PrecioMinimo.ToString("N2") / @PrecioIdeal.ToString("N2") USD</td>
+                        <td></td>
+                    </tr>
+                    <tr>
+                        <td colspan="6" class="text-end">Ganancia estimada al precio final</td>
+                        <td class="text-end @(Formulario.PrecioVentaUSD >= CostoTotal ? "text-success" : "text-danger")">
+                            @(Formulario.PrecioVentaUSD - CostoTotal).ToString("N2") USD
+                        </td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="text-end">
+            @if (FichaEditandoId.HasValue)
+            {
+                <button class="btn btn-outline-secondary me-2" @onclick="CancelarEdicion">Cancelar</button>
+            }
+            <button class="btn btn-primary" @onclick="Guardar" disabled="@(Guardando || !ProductoId.HasValue)">
+                @(Guardando ? "Guardando..." : FichaEditandoId.HasValue ? "Guardar cambios" : "Guardar ficha")
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr><th>Variante</th><th>Contexto</th><th>Costo total</th><th>Precio mínimo</th><th>Precio ideal</th><th>Venta</th><th></th></tr>
+            </thead>
+            <tbody>
+                @if (ProductoId == null)
+                {
+                    <tr><td colspan="7" class="text-center text-muted py-4">Selecciona un producto para ver sus fichas.</td></tr>
+                }
+                else if (Fichas.Count == 0)
+                {
+                    <tr><td colspan="7" class="text-center text-muted py-4">Este producto aún no tiene fichas de costo.</td></tr>
+                }
+                @foreach (var ficha in Fichas)
+                {
+                    <tr>
+                        <td>@ficha.Variante</td>
+                        <td>@ficha.Contexto</td>
+                        <td>@ficha.CostoTotalUSD.ToString("N2") USD</td>
+                        <td>@ficha.PrecioMinimoUSD.ToString("N2") USD</td>
+                        <td>@ficha.PrecioIdealUSD.ToString("N2") USD</td>
+                        <td>@ficha.PrecioVentaUSD.ToString("N2") USD</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => Editar(ficha)">Editar</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(ficha.Id)">Desactivar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private List<ProductoDto> Productos = new();
+    private List<FichaDto> Fichas = new();
+    private Guid? ProductoId;
+    private Guid? FichaEditandoId;
+    private FormularioDto Formulario = NuevoFormulario();
+    private string Mensaje = "";
+    private bool EsError;
+    private bool Guardando;
+
+    private decimal CostoTotal => Formulario.Partidas.Sum(CalcularSubtotal);
+    private decimal PrecioMinimo => CostoTotal * Formulario.MultiplicadorPrecioMinimo;
+    private decimal PrecioIdeal => CostoTotal * Formulario.MultiplicadorPrecioIdeal;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await AsegurarToken();
+        using var request = CrearRequest(HttpMethod.Get, "api/v1/Catalogos/productos");
+        using var response = await Http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            Mensaje = await ObtenerError(response);
+            EsError = true;
+            return;
+        }
+        Productos = await response.Content.ReadFromJsonAsync<List<ProductoDto>>() ?? new();
+    }
+
+    private async Task SeleccionarProducto()
+    {
+        Fichas.Clear();
+        CancelarEdicion();
+        if (!ProductoId.HasValue) return;
+        using var request = CrearRequest(HttpMethod.Get, $"api/v1/Catalogos/productos/{ProductoId}/fichas-costo");
+        using var response = await Http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            Mensaje = await ObtenerError(response);
+            EsError = true;
+            return;
+        }
+        Fichas = await response.Content.ReadFromJsonAsync<List<FichaDto>>() ?? new();
+    }
+
+    private async Task Guardar()
+    {
+        Mensaje = "";
+        EsError = true;
+        if (!ProductoId.HasValue || string.IsNullOrWhiteSpace(Formulario.Variante) ||
+            string.IsNullOrWhiteSpace(Formulario.Contexto) || Formulario.Partidas.Count == 0)
+        {
+            Mensaje = "Selecciona un producto, indica variante y contexto, y agrega al menos una partida.";
+            return;
+        }
+
+        Formulario.Partidas = Formulario.Partidas
+            .Select((partida, index) => { partida.Orden = index; return partida; })
+            .ToList();
+        Guardando = true;
+        try
+        {
+            var ruta = FichaEditandoId.HasValue
+                ? $"api/v1/Catalogos/fichas-costo/{FichaEditandoId}"
+                : $"api/v1/Catalogos/productos/{ProductoId}/fichas-costo";
+            using var request = CrearRequest(FichaEditandoId.HasValue ? HttpMethod.Put : HttpMethod.Post, ruta);
+            request.Content = JsonContent.Create(Formulario);
+            using var response = await Http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                Mensaje = await ObtenerError(response);
+                return;
+            }
+
+            Mensaje = "Ficha de costo guardada.";
+            EsError = false;
+            CancelarEdicion();
+            await SeleccionarProducto();
+        }
+        catch (HttpRequestException ex)
+        {
+            Mensaje = ex.Message;
+        }
+        finally
+        {
+            Guardando = false;
+        }
+    }
+
+    private void Editar(FichaDto ficha)
+    {
+        FichaEditandoId = ficha.Id;
+        Formulario = new()
+        {
+            Variante = ficha.Variante,
+            Contexto = ficha.Contexto,
+            MultiplicadorPrecioMinimo = ficha.MultiplicadorPrecioMinimo,
+            MultiplicadorPrecioIdeal = ficha.MultiplicadorPrecioIdeal,
+            PrecioVentaUSD = ficha.PrecioVentaUSD,
+            Partidas = ficha.Partidas.Select(partida => new PartidaDto
+            {
+                Concepto = partida.Concepto,
+                TipoCalculo = partida.TipoCalculo,
+                Cantidad = partida.Cantidad,
+                CostoUnitarioUSD = partida.CostoUnitarioUSD,
+                Porcentaje = partida.Porcentaje,
+                IncluirEnBasePorcentual = partida.IncluirEnBasePorcentual,
+                Orden = partida.Orden
+            }).ToList()
+        };
+    }
+
+    private async Task Eliminar(Guid id)
+    {
+        using var request = CrearRequest(HttpMethod.Delete, $"api/v1/Catalogos/fichas-costo/{id}");
+        using var response = await Http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            Mensaje = await ObtenerError(response);
+            EsError = true;
+            return;
+        }
+        Mensaje = "Ficha de costo desactivada.";
+        EsError = false;
+        await SeleccionarProducto();
+    }
+
+    private void AgregarPartida() => Formulario.Partidas.Add(new() { Orden = Formulario.Partidas.Count });
+    private void QuitarPartida(PartidaDto partida) => Formulario.Partidas.Remove(partida);
+
+    private decimal CalcularSubtotal(PartidaDto partida)
+    {
+        if (partida.TipoCalculo == "Porcentaje")
+        {
+            var basePorcentual = Formulario.Partidas
+                .Where(item => item.TipoCalculo == "Fijo" && item.IncluirEnBasePorcentual)
+                .Sum(item => Math.Round(item.Cantidad * item.CostoUnitarioUSD, 2, MidpointRounding.AwayFromZero));
+            return Math.Round(basePorcentual * partida.Porcentaje / 100m, 2, MidpointRounding.AwayFromZero);
+        }
+        return Math.Round(partida.Cantidad * partida.CostoUnitarioUSD, 2, MidpointRounding.AwayFromZero);
+    }
+
+    private void CancelarEdicion()
+    {
+        FichaEditandoId = null;
+        Formulario = NuevoFormulario();
+    }
+
+    private static FormularioDto NuevoFormulario() => new()
+    {
+        MultiplicadorPrecioMinimo = 2m,
+        MultiplicadorPrecioIdeal = 3m
+    };
+
+    private async Task AsegurarToken()
+    {
+        if (string.IsNullOrWhiteSpace(TokenService.Token))
+            TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+    }
+
+    private HttpRequestMessage CrearRequest(HttpMethod method, string ruta)
+    {
+        var request = new HttpRequestMessage(method, ruta);
+        if (!string.IsNullOrWhiteSpace(TokenService.Token))
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+        return request;
+    }
+
+    private static async Task<string> ObtenerError(HttpResponseMessage response)
+    {
+        var contenido = await response.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(contenido) ? $"La API respondió con {(int)response.StatusCode}." : contenido.Trim('"');
+    }
+
+    private sealed class ProductoDto { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
+    private sealed class FichaDto : FormularioDto
+    {
+        public Guid Id { get; set; }
+        public decimal CostoTotalUSD { get; set; }
+        public decimal PrecioMinimoUSD { get; set; }
+        public decimal PrecioIdealUSD { get; set; }
+    }
+    private class FormularioDto
+    {
+        public string Variante { get; set; } = "";
+        public string Contexto { get; set; } = "";
+        public decimal MultiplicadorPrecioMinimo { get; set; } = 2m;
+        public decimal MultiplicadorPrecioIdeal { get; set; } = 3m;
+        public decimal PrecioVentaUSD { get; set; }
+        public List<PartidaDto> Partidas { get; set; } = new();
+    }
+    private sealed class PartidaDto
+    {
+        public string Concepto { get; set; } = "";
+        public string TipoCalculo { get; set; } = "Fijo";
+        public decimal Cantidad { get; set; } = 1m;
+        public decimal CostoUnitarioUSD { get; set; }
+        public decimal Porcentaje { get; set; }
+        public bool IncluirEnBasePorcentual { get; set; } = true;
+        public decimal SubtotalUSD { get; set; }
+        public int Orden { get; set; }
+    }
+}

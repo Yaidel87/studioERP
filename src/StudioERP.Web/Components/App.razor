@@ -13,7 +13,7 @@
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 
     <script>
         window.guardarToken = token => localStorage.setItem('authToken', token);
@@ -137,19 +137,37 @@
                     right: 'dayGridMonth,listWeek'
                 },
                 events: todosLosEventos,
-                dayCellClassNames: function(info) {
+                dayMaxEvents: true,
+                eventTimeFormat: {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    meridiem: 'short'
+                },
+                dayCellDidMount: function(info) {
                     var date = info.date;
                     var key = date.getFullYear() + '-' +
                         String(date.getMonth() + 1).padStart(2, '0') + '-' +
                         String(date.getDate()).padStart(2, '0');
-                    if (diasConBloqueo.has(key)) return ['dashboard-day-blocked'];
-                    if (diasConSesion.has(key)) return ['dashboard-day-session'];
-                    return [];
+                    var color = diasConBloqueo.has(key)
+                        ? '#991b1b'
+                        : diasConSesion.has(key) ? '#1e3a8a' : null;
+
+                    if (color) {
+                        [info.el, info.el.querySelector('.fc-daygrid-day-frame'), info.el.querySelector('.fc-daygrid-day-bg')]
+                            .filter(Boolean)
+                            .forEach(function(element) {
+                                element.style.setProperty('background-color', color, 'important');
+                            });
+
+                        var dayNumber = info.el.querySelector('.fc-daygrid-day-number');
+                        if (dayNumber) dayNumber.style.setProperty('color', '#fff', 'important');
+                    }
                 },
                 eventDidMount: function(info) {
                     var personal = info.event.extendedProps.personal || [];
                     var locacion = info.event.extendedProps.locacion || '';
-                    info.el.title = `Cliente: ${info.event.title}\nLocación: ${locacion}\nPersonal: ${personal.join(', ')}`;
+                    var detalle = info.event.extendedProps.detalle || info.event.title;
+                    info.el.title = `Sesión: ${detalle}\nLocación: ${locacion}\nPersonal: ${personal.join(', ')}`;
                 }
             });
 

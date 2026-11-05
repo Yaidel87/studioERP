@@ -1,0 +1,296 @@
+@page "/ventas/promociones"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@using System.Net.Http.Json
+@using StudioERP.Web.Services
+
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject TokenService TokenService
+
+<PageTitle>Promociones - StudioERP</PageTitle>
+
+<h4 class="fw-bold mb-4">Promociones de productos y paquetes</h4>
+
+@if (!string.IsNullOrWhiteSpace(Mensaje))
+{
+    <div class="alert @(EsError ? "alert-danger" : "alert-success")">@Mensaje</div>
+}
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <h6 class="fw-bold">@(PromocionEditandoId.HasValue ? "Editar promoción" : "Nueva promoción")</h6>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Nombre</label>
+                <input class="form-control" @bind="Formulario.Nombre" maxlength="200" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Producto (opcional)</label>
+                <select class="form-select" @bind="Formulario.ProductoId" @bind:after="LimpiarPaquete">
+                    <option value="">Sin producto</option>
+                    @foreach (var producto in Productos)
+                    {
+                        <option value="@producto.Id">@producto.Nombre</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Paquete (opcional)</label>
+                <select class="form-select" @bind="Formulario.PaqueteId" @bind:after="LimpiarProducto">
+                    <option value="">Sin paquete</option>
+                    @foreach (var paquete in Paquetes)
+                    {
+                        <option value="@paquete.Id">@paquete.Nombre</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Tipo</label>
+                <select class="form-select" @bind="Formulario.TipoDescuento">
+                    <option value="FijoUSD">Descuento fijo (USD)</option>
+                    <option value="Porcentaje">Descuento porcentual</option>
+                    <option value="TrabajoGratis">Trabajo gratis explícito</option>
+                </select>
+            </div>
+            @if (Formulario.TipoDescuento != "TrabajoGratis")
+            {
+                <div class="col-md-2">
+                    <label class="form-label">Descuento</label>
+                    <input type="number" class="form-control" min="0.01" step="0.01" @bind="Formulario.ValorDescuento" />
+                </div>
+            }
+            else
+            {
+                <div class="col-md-5">
+                    <label class="form-label">Trabajo incluido gratis</label>
+                    <input class="form-control" @bind="Formulario.DescripcionTrabajoGratis" maxlength="300" />
+                </div>
+            }
+            <div class="col-md-3">
+                <label class="form-label">Desde</label>
+                <input type="date" class="form-control" @bind="Formulario.FechaInicio" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Hasta</label>
+                <input type="date" class="form-control" @bind="Formulario.FechaFin" />
+            </div>
+            <div class="col-12 text-end">
+                @if (PromocionEditandoId.HasValue)
+                {
+                    <button class="btn btn-outline-secondary me-2" @onclick="CancelarEdicion">Cancelar</button>
+                }
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@Guardando">
+                    @(Guardando ? "Guardando..." : PromocionEditandoId.HasValue ? "Guardar cambios" : "Crear promoción")
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Promoción</th>
+                    <th>Aplicada a</th>
+                    <th>Oferta</th>
+                    <th>Vigencia</th>
+                    <th>Estado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (ListaPromociones.Count == 0)
+                {
+                    <tr><td colspan="6" class="text-center text-muted py-4">No hay promociones registradas.</td></tr>
+                }
+                @foreach (var promocion in ListaPromociones)
+                {
+                    <tr>
+                        <td>@promocion.Nombre</td>
+                        <td>@(promocion.Producto ?? promocion.Paquete ?? "—")</td>
+                        <td>
+                            @if (promocion.TipoDescuento == "TrabajoGratis")
+                            {
+                                @promocion.DescripcionTrabajoGratis
+                            }
+                            else
+                            {
+                                @(promocion.TipoDescuento == "Porcentaje" ? $"{promocion.ValorDescuento:N2}%" : $"{promocion.ValorDescuento:N2} USD")
+                            }
+                        </td>
+                        <td>@promocion.FechaInicio.ToLocalTime().ToString("dd/MM/yyyy") – @promocion.FechaFin.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                        <td><span class="badge @(promocion.Activa ? "bg-success" : "bg-secondary")">@(promocion.Activa ? "Activa" : "Inactiva")</span></td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => Editar(promocion)">Editar</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Eliminar(promocion.Id)">Desactivar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@code {
+    private List<ProductoDto> Productos = new();
+    private List<PaqueteDto> Paquetes = new();
+    private List<PromocionDto> ListaPromociones = new();
+    private FormularioDto Formulario = NuevoFormulario();
+    private Guid? PromocionEditandoId;
+    private string Mensaje = "";
+    private bool EsError;
+    private bool Guardando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatos();
+    }
+
+    private async Task CargarDatos()
+    {
+        await AsegurarToken();
+        Productos = await ObtenerLista<ProductoDto>("api/v1/Catalogos/productos");
+        Paquetes = await ObtenerLista<PaqueteDto>("api/v1/Catalogos/paquetes");
+        ListaPromociones = await ObtenerLista<PromocionDto>("api/v1/Catalogos/promociones");
+    }
+
+    private async Task<List<T>> ObtenerLista<T>(string ruta)
+    {
+        using var request = CrearRequest(HttpMethod.Get, ruta);
+        using var response = await Http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException(await ObtenerError(response));
+        return await response.Content.ReadFromJsonAsync<List<T>>() ?? new();
+    }
+
+    private async Task Guardar()
+    {
+        Mensaje = "";
+        EsError = true;
+        if (string.IsNullOrWhiteSpace(Formulario.Nombre) ||
+            (Formulario.ProductoId.HasValue == Formulario.PaqueteId.HasValue))
+        {
+            Mensaje = "Indica el nombre y selecciona exactamente un producto o paquete.";
+            return;
+        }
+
+        Guardando = true;
+        try
+        {
+            var metodo = PromocionEditandoId.HasValue ? HttpMethod.Put : HttpMethod.Post;
+            var ruta = PromocionEditandoId.HasValue
+                ? $"api/v1/Catalogos/promociones/{PromocionEditandoId}"
+                : "api/v1/Catalogos/promociones";
+            using var request = CrearRequest(metodo, ruta);
+            request.Content = JsonContent.Create(Formulario);
+            using var response = await Http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                Mensaje = await ObtenerError(response);
+                return;
+            }
+
+            Mensaje = "Promoción guardada correctamente.";
+            EsError = false;
+            CancelarEdicion();
+            await CargarDatos();
+        }
+        catch (HttpRequestException ex)
+        {
+            Mensaje = ex.Message;
+        }
+        finally
+        {
+            Guardando = false;
+        }
+    }
+
+    private void Editar(PromocionDto promocion)
+    {
+        PromocionEditandoId = promocion.Id;
+        Formulario = new()
+        {
+            Nombre = promocion.Nombre,
+            ProductoId = promocion.ProductoId,
+            PaqueteId = promocion.PaqueteId,
+            TipoDescuento = promocion.TipoDescuento,
+            ValorDescuento = promocion.ValorDescuento,
+            DescripcionTrabajoGratis = promocion.DescripcionTrabajoGratis,
+            FechaInicio = promocion.FechaInicio.ToLocalTime().Date,
+            FechaFin = promocion.FechaFin.ToLocalTime().Date
+        };
+    }
+
+    private async Task Eliminar(Guid id)
+    {
+        using var request = CrearRequest(HttpMethod.Delete, $"api/v1/Catalogos/promociones/{id}");
+        using var response = await Http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+        {
+            Mensaje = await ObtenerError(response);
+            EsError = true;
+            return;
+        }
+        Mensaje = "Promoción desactivada.";
+        EsError = false;
+        await CargarDatos();
+    }
+
+    private void LimpiarPaquete() => Formulario.PaqueteId = null;
+    private void LimpiarProducto() => Formulario.ProductoId = null;
+    private void CancelarEdicion()
+    {
+        PromocionEditandoId = null;
+        Formulario = NuevoFormulario();
+    }
+
+    private static FormularioDto NuevoFormulario() => new()
+    {
+        TipoDescuento = "FijoUSD",
+        FechaInicio = DateTime.Today,
+        FechaFin = DateTime.Today.AddDays(7)
+    };
+
+    private async Task AsegurarToken()
+    {
+        if (string.IsNullOrWhiteSpace(TokenService.Token))
+            TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+    }
+
+    private HttpRequestMessage CrearRequest(HttpMethod method, string ruta)
+    {
+        var request = new HttpRequestMessage(method, ruta);
+        if (!string.IsNullOrWhiteSpace(TokenService.Token))
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+        return request;
+    }
+
+    private static async Task<string> ObtenerError(HttpResponseMessage response)
+    {
+        var contenido = await response.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(contenido) ? $"La API respondió con {(int)response.StatusCode}." : contenido.Trim('"');
+    }
+
+    private sealed class ProductoDto { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
+    private sealed class PaqueteDto { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
+    private class FormularioDto
+    {
+        public string Nombre { get; set; } = "";
+        public Guid? ProductoId { get; set; }
+        public Guid? PaqueteId { get; set; }
+        public string TipoDescuento { get; set; } = "FijoUSD";
+        public decimal ValorDescuento { get; set; }
+        public string DescripcionTrabajoGratis { get; set; } = "";
+        public DateTime FechaInicio { get; set; }
+        public DateTime FechaFin { get; set; }
+    }
+    private sealed class PromocionDto : FormularioDto
+    {
+        public Guid Id { get; set; }
+        public string? Producto { get; set; }
+        public string? Paquete { get; set; }
+        public bool Activa { get; set; }
+    }
+}

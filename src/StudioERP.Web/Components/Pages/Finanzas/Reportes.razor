@@ -10,10 +10,15 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h4 class="fw-bold m-0">Resumen Financiero</h4>
-    <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir</button>
+    <div class="d-flex gap-2">
+        <input type="month" class="form-control" @bind="MesSeleccionado" />
+        <button class="btn btn-outline-primary" @onclick="CargarDatos">Consultar</button>
+        <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir</button>
+    </div>
 </div>
 
 @if (MensajeError != "") { <div class="alert alert-danger">@MensajeError</div> }
+@if (MensajeExito != "") { <div class="alert alert-success">@MensajeExito</div> }
 
 @if (Resumen == null)
 {
@@ -22,41 +27,57 @@
 else
 {
     <div class="row g-4 mb-4">
-        <div class="col-md-3">
+        <div class="col-md-4">
             <div class="card shadow-sm border-0 p-3 bg-primary text-white">
-                <h6>Ingresos Verificados</h6>
-                <h3>$@Resumen.Ingresos</h3>
+                <h6>Ingresos verificados (USD)</h6>
+                <h3>$@Resumen.Ingresos.ToString("N2")</h3>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card shadow-sm border-0 p-3 bg-warning text-dark">
-                <h6>Comisiones Pendientes</h6>
-                <h3>$@Resumen.ComisionesPendientes</h3>
-            </div>
-        </div>
-        <div class="col-md-3">
+        <div class="col-md-4">
             <div class="card shadow-sm border-0 p-3 bg-danger text-white">
-                <h6>Gastos</h6>
-                <h3>$@Resumen.Gastos</h3>
+                <h6>Gastos operativos (USD)</h6>
+                <h3>$@Resumen.GastosOperativosUSD.ToString("N2")</h3>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-4">
             <div class="card shadow-sm border-0 p-3 bg-success text-white">
-                <h6>Utilidad Bruta</h6>
-                <h3>$@Resumen.UtilidadBruta</h3>
+                <h6>Utilidad operativa (USD)</h6>
+                <h3>$@Resumen.UtilidadOperativaUSD.ToString("N2")</h3>
             </div>
         </div>
     </div>
+    <div class="row g-3 mb-4">
+        <div class="col-md-3"><div class="card border-0 shadow-sm p-3"><span class="text-muted">Personal pagado (USD)</span><strong>$@Resumen.PagosPersonalPagadosUSD.ToString("N2")</strong></div></div>
+        <div class="col-md-3"><div class="card border-0 shadow-sm p-3"><span class="text-muted">Personal pendiente (USD)</span><strong>$@Resumen.PagosPersonalPendientesUSD.ToString("N2")</strong></div></div>
+        <div class="col-md-3"><div class="card border-0 shadow-sm p-3"><span class="text-muted">Personal pendiente (CUP)</span><strong>@Resumen.PagosPersonalPendientesCUP.ToString("N2")</strong></div></div>
+        <div class="col-md-3"><div class="card border-0 shadow-sm p-3"><span class="text-muted">Comisiones pendientes (USD)</span><strong>$@Resumen.ComisionesPendientesUSD.ToString("N2")</strong></div></div>
+        <div class="col-md-3"><div class="card border-0 shadow-sm p-3"><span class="text-muted">Pagos de deuda (USD)</span><strong>$@Resumen.PagosDeudaUSD.ToString("N2")</strong></div></div>
+        <div class="col-md-3"><div class="card border-0 shadow-sm p-3"><span class="text-muted">Reinversión (USD)</span><strong>$@Resumen.ReinversionUSD.ToString("N2")</strong></div></div>
+    </div>
+    @if (Resumen.RegistrosCUPHistoricosSinConversion > 0)
+    {
+        <div class="alert alert-warning">
+            Hay @Resumen.RegistrosCUPHistoricosSinConversion operaciones CUP antiguas sin una tasa histórica registrada; no se incluyen en los totales USD.
+        </div>
+    }
 }
 
 <hr class="my-5" />
 
-<h4 class="fw-bold mb-4">Registro de Gastos</h4>
+<h4 class="fw-bold mb-4">Registro de movimientos financieros</h4>
 
 <div class="card shadow-sm border-0 mb-4">
     <div class="card-body p-4">
         <div class="row g-3 align-items-end">
-            <div class="col-md-3">
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Movimiento</label>
+                <select class="form-select" @bind="NuevoGasto.TipoMovimiento">
+                    <option value="GastoOperativo">Gasto operativo</option>
+                    <option value="PagoDeuda">Pago de deuda</option>
+                    <option value="Reinversion">Reinversión</option>
+                </select>
+            </div>
+            <div class="col-md-2">
                 <label class="form-label small fw-bold">Categoría</label>
                 <select class="form-select" @bind="NuevoGasto.Categoria">
                     <option value="Alquiler">Alquiler</option>
@@ -65,15 +86,22 @@ else
                     <option value="Otros">Otros</option>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label small fw-bold">Descripción</label>
                 <input class="form-control" @bind="NuevoGasto.Descripcion" placeholder="Ej. Pago de luz de Octubre" />
             </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold">Monto (USD)</label>
-                <input type="number" class="form-control" @bind="NuevoGasto.Monto" />
+            <div class="col-md-1">
+                <label class="form-label small fw-bold">Moneda</label>
+                <select class="form-select" @bind="NuevoGasto.Moneda">
+                    <option value="USD">USD</option>
+                    <option value="CUP">CUP</option>
+                </select>
             </div>
             <div class="col-md-2">
+                <label class="form-label small fw-bold">Monto</label>
+                <input type="number" class="form-control" @bind="NuevoGasto.Monto" />
+            </div>
+            <div class="col-md-1">
                 <label class="form-label small fw-bold">Fecha</label>
                 <input type="date" class="form-control" @bind="NuevoGasto.Fecha" />
             </div>
@@ -91,18 +119,21 @@ else
                 <tr>
                     <th class="ps-4">Fecha</th>
                     <th>Categoría</th>
+                    <th>Tipo</th>
                     <th>Descripción</th>
-                    <th class="text-end pe-4">Monto</th>
+                    <th class="text-end">Monto</th>
+                    <th class="text-end">Tasa CUP/USD</th>
+                    <th class="text-end pe-4">Equivalente USD</th>
                 </tr>
             </thead>
             <tbody>
                 @if (ListaGastos == null)
                 {
-                    <tr><td colspan="4" class="text-center py-4 text-muted">Cargando...</td></tr>
+                    <tr><td colspan="7" class="text-center py-4 text-muted">Cargando...</td></tr>
                 }
                 else if (!ListaGastos.Any())
                 {
-                    <tr><td colspan="4" class="text-center py-4 text-muted">No hay gastos registrados.</td></tr>
+                    <tr><td colspan="7" class="text-center py-4 text-muted">No hay movimientos registrados.</td></tr>
                 }
                 else
                 {
@@ -111,8 +142,11 @@ else
                         <tr>
                             <td class="ps-4">@g.Fecha.ToString("dd/MM/yyyy")</td>
                             <td><span class="badge bg-secondary">@g.Categoria</span></td>
+                            <td>@(g.TipoMovimiento switch { "PagoDeuda" => "Pago de deuda", "Reinversion" => "Reinversión", _ => "Gasto operativo" })</td>
                             <td>@g.Descripcion</td>
-                            <td class="text-end pe-4 fw-bold text-danger">-$@g.Monto</td>
+                            <td class="text-end">@g.Monto.ToString("N2") @g.Moneda</td>
+                            <td class="text-end">@(g.TasaCambio.HasValue ? g.TasaCambio.Value.ToString("N4") : "—")</td>
+                            <td class="text-end pe-4 fw-bold text-danger">@(g.MontoUSD.HasValue ? $"${g.MontoUSD.Value:N2}" : "Sin tasa histórica")</td>
                         </tr>
                     }
                 }
@@ -125,45 +159,58 @@ else
     private ResumenDto? Resumen;
     private List<GastoDto>? ListaGastos;
     private string MensajeError = "";
+    private string MensajeExito = "";
+    private DateTime MesSeleccionado = new(DateTime.Today.Year, DateTime.Today.Month, 1);
 
     private NuevoGastoDto NuevoGasto = new() { Fecha = DateTime.Today };
 
     protected override async Task OnInitializedAsync()
     {
-        await CargarResumen();
-        await CargarGastos();
+        await CargarDatos();
     }
 
-    private async Task CargarResumen()
+    private async Task CargarDatos()
+    {
+        MensajeError = "";
+        var periodo = new DateTime(MesSeleccionado.Year, MesSeleccionado.Month, 1);
+        await CargarResumen(periodo);
+        await CargarGastos(periodo);
+    }
+
+    private async Task CargarResumen(DateTime periodo)
     {
         try
         {
             if (string.IsNullOrEmpty(TokenService.Token))
                 TokenService.Token = await JS.InvokeAsync<string>("leerToken");
 
-            var req = new HttpRequestMessage(HttpMethod.Get, "api/v1/Pagos/resumen");
+            var req = new HttpRequestMessage(HttpMethod.Get, $"api/v1/Pagos/resumen?anio={periodo.Year}&mes={periodo.Month}");
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
             var res = await Http.SendAsync(req);
 
             if (res.IsSuccessStatusCode)
                 Resumen = await res.Content.ReadFromJsonAsync<ResumenDto>();
+            else
+                MensajeError = $"No se pudo consultar el reporte financiero ({(int)res.StatusCode}).";
         }
         catch (Exception ex) { MensajeError = "Error: " + ex.Message; }
     }
 
-    private async Task CargarGastos()
+    private async Task CargarGastos(DateTime periodo)
     {
         try
         {
             if (string.IsNullOrEmpty(TokenService.Token))
                 TokenService.Token = await JS.InvokeAsync<string>("leerToken");
 
-            var req = new HttpRequestMessage(HttpMethod.Get, "api/v1/Gastos");
+            var req = new HttpRequestMessage(HttpMethod.Get, $"api/v1/Gastos?anio={periodo.Year}&mes={periodo.Month}");
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
             var res = await Http.SendAsync(req);
 
             if (res.IsSuccessStatusCode)
                 ListaGastos = await res.Content.ReadFromJsonAsync<List<GastoDto>>();
+            else
+                MensajeError = $"No se pudieron consultar los movimientos ({(int)res.StatusCode}).";
         }
         catch (Exception ex) { MensajeError = "Error: " + ex.Message; }
     }
@@ -171,6 +218,7 @@ else
     private async Task RegistrarGasto()
     {
         MensajeError = "";
+        MensajeExito = "";
         if (string.IsNullOrEmpty(NuevoGasto.Descripcion) || NuevoGasto.Monto <= 0)
         {
             MensajeError = "La descripción y el monto son obligatorios.";
@@ -182,7 +230,15 @@ else
             if (string.IsNullOrEmpty(TokenService.Token))
                 TokenService.Token = await JS.InvokeAsync<string>("leerToken");
 
-            var request = new { Categoria = NuevoGasto.Categoria, Descripcion = NuevoGasto.Descripcion, Monto = NuevoGasto.Monto, Moneda = "USD", Fecha = NuevoGasto.Fecha };
+            var request = new
+            {
+                Categoria = NuevoGasto.Categoria,
+                Descripcion = NuevoGasto.Descripcion,
+                Monto = NuevoGasto.Monto,
+                Moneda = NuevoGasto.Moneda,
+                TipoMovimiento = NuevoGasto.TipoMovimiento,
+                Fecha = NuevoGasto.Fecha
+            };
             var req = new HttpRequestMessage(HttpMethod.Post, "api/v1/Gastos");
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
             req.Content = JsonContent.Create(request);
@@ -190,9 +246,14 @@ else
 
             if (res.IsSuccessStatusCode)
             {
+                MesSeleccionado = new DateTime(NuevoGasto.Fecha.Year, NuevoGasto.Fecha.Month, 1);
                 NuevoGasto = new() { Fecha = DateTime.Today };
-                await CargarResumen();
-                await CargarGastos();
+                MensajeExito = "Movimiento registrado correctamente.";
+                await CargarDatos();
+            }
+            else
+            {
+                MensajeError = await res.Content.ReadAsStringAsync();
             }
         }
         catch (Exception ex) { MensajeError = "Error: " + ex.Message; }
@@ -203,9 +264,15 @@ else
     public class ResumenDto
     {
         public decimal Ingresos { get; set; }
-        public decimal ComisionesPendientes { get; set; }
-        public decimal Gastos { get; set; }
-        public decimal UtilidadBruta { get; set; }
+        public decimal ComisionesPendientesUSD { get; set; }
+        public decimal GastosOperativosUSD { get; set; }
+        public decimal PagosPersonalPendientesUSD { get; set; }
+        public decimal PagosPersonalPendientesCUP { get; set; }
+        public decimal PagosPersonalPagadosUSD { get; set; }
+        public decimal PagosDeudaUSD { get; set; }
+        public decimal ReinversionUSD { get; set; }
+        public int RegistrosCUPHistoricosSinConversion { get; set; }
+        public decimal UtilidadOperativaUSD { get; set; }
     }
 
     public class GastoDto
@@ -214,6 +281,10 @@ else
         public string Categoria { get; set; } = "";
         public string Descripcion { get; set; } = "";
         public decimal Monto { get; set; }
+        public string Moneda { get; set; } = "USD";
+        public decimal? MontoUSD { get; set; }
+        public decimal? TasaCambio { get; set; }
+        public string TipoMovimiento { get; set; } = "GastoOperativo";
         public DateTime Fecha { get; set; }
     }
 
@@ -222,6 +293,8 @@ else
         public string Categoria { get; set; } = "Alquiler";
         public string Descripcion { get; set; } = "";
         public decimal Monto { get; set; }
+        public string Moneda { get; set; } = "USD";
+        public string TipoMovimiento { get; set; } = "GastoOperativo";
         public DateTime Fecha { get; set; }
     }
 }

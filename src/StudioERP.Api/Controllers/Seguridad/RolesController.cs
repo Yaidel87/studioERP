@@ -33,7 +33,11 @@ public class RolesController : ControllerBase
                 r.Nombre,
                 r.Descripcion,
                 r.Permisos,
-                CantidadUsuarios = r.Usuarios.Count
+                Usuarios = r.Usuarios
+                    .Where(u => !u.IsDeleted && u.Activo)
+                    .Select(u => new { u.Id, u.Username, u.NombreCompleto })
+                    .ToList(),
+                CantidadUsuarios = r.Usuarios.Count(u => !u.IsDeleted && u.Activo)
             })
             .ToListAsync();
 
@@ -44,14 +48,17 @@ public class RolesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Crear(RolRequest request)
     {
-        if (await _context.Roles.AnyAsync(r => r.Nombre == request.Nombre))
+        var nombre = request.Nombre?.Trim();
+        if (string.IsNullOrWhiteSpace(nombre))
+            return BadRequest("El nombre del rol es obligatorio.");
+        if (await _context.Roles.AnyAsync(r => r.Nombre == nombre && !r.IsDeleted))
             return BadRequest("El nombre del rol ya existe.");
 
         var rol = new Rol
         {
-            Nombre = request.Nombre,
-            Descripcion = request.Descripcion,
-            Permisos = request.Permisos // Guardamos los permisos como string separado por comas
+            Nombre = nombre,
+            Descripcion = request.Descripcion?.Trim() ?? string.Empty,
+            Permisos = request.Permisos?.Trim() ?? string.Empty
         };
 
         _context.Roles.Add(rol);
@@ -64,19 +71,35 @@ public class RolesController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Actualizar(Guid id, RolRequest request)
     {
-        var rol = await _context.Roles.FindAsync(id);
+        var rol = await _context.Roles.FirstOrDefaultAsync(r => r.Id == id && !r.IsDeleted);
         if (rol == null) return NotFound("Rol no encontrado.");
 
         // Verificar que el nuevo nombre no esté en uso por otro rol
-        if (rol.Nombre != request.Nombre && await _context.Roles.AnyAsync(r => r.Nombre == request.Nombre))
+        var nombre = request.Nombre?.Trim();
+        if (string.IsNullOrWhiteSpace(nombre))
+            return BadRequest("El nombre del rol es obligatorio.");
+        if (rol.Nombre != nombre && await _context.Roles.AnyAsync(r => r.Nombre == nombre && !r.IsDeleted))
             return BadRequest("Ya existe otro rol con ese nombre.");
 
-        rol.Nombre = request.Nombre;
-        rol.Descripcion = request.Descripcion;
-        rol.Permisos = request.Permisos;
+        rol.Nombre = nombre;
+        rol.Descripcion = request.Descripcion?.Trim() ?? string.Empty;
+        rol.Permisos = request.Permisos?.Trim() ?? string.Empty;
 
         await _context.SaveChangesAsync();
 
         return Ok(rol);
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Eliminar(Guid id)
+    {
+        var rol = await _context.Roles.FirstOrDefaultAsync(r => r.Id == id && !r.IsDeleted);
+        if (rol == null) return NotFound("Rol no encontrado.");
+        if (await _context.Usuarios.AnyAsync(u => u.RolId == id && !u.IsDeleted && u.Activo))
+            return BadRequest("No se puede eliminar un rol con usuarios activos asignados.");
+
+        rol.IsDeleted = true;
+        await _context.SaveChangesAsync();
+        return Ok(new { mensaje = "Rol eliminado correctamente." });
     }
 }

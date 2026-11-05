@@ -1,6 +1,7 @@
 @page "/roles"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
 @using System.Net.Http.Json
+@using Microsoft.JSInterop
 @using StudioERP.Web.Services
 
 @inject HttpClient Http
@@ -10,7 +11,7 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h4 class="fw-bold m-0">Roles y Permisos</h4>
-    <button class="btn btn-primary" @onclick="() => MostrarFormulario = !MostrarFormulario">
+    <button class="btn btn-primary" @onclick="AbrirFormularioNuevo">
         <i class="bi bi-plus-lg"></i> Nuevo Rol
     </button>
 </div>
@@ -23,15 +24,15 @@
 {
     <div class="card shadow-sm border-0 mb-4">
         <div class="card-body p-4">
-            <h6 class="fw-bold mb-3">Crear Nuevo Rol</h6>
+            <h6 class="fw-bold mb-3">@(RolEditandoId.HasValue ? "Editar Rol" : "Crear Nuevo Rol")</h6>
             <div class="row g-3 mb-4">
                 <div class="col-md-4">
                     <label class="form-label small fw-bold">Nombre del Rol</label>
-                    <input class="form-control" @bind="NuevoRol.Nombre" placeholder="Ej. Fotógrafo" />
+                    <input class="form-control" @bind="FormularioRol.Nombre" placeholder="Ej. Fotógrafo" />
                 </div>
                 <div class="col-md-8">
                     <label class="form-label small fw-bold">Descripción</label>
-                    <input class="form-control" @bind="NuevoRol.Descripcion" placeholder="Ej. Encargado de tomar fotos" />
+                    <input class="form-control" @bind="FormularioRol.Descripcion" placeholder="Ej. Encargado de tomar fotos" />
                 </div>
             </div>
 
@@ -48,7 +49,7 @@
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" 
                                                id="@permiso" 
-                                               checked="@NuevoRol.Permisos.Contains(permiso)"
+                                               checked="@FormularioRol.Permisos.Contains(permiso)"
                                                @onchange="e => TogglePermiso(permiso, (bool)e.Value)" />
                                         <label class="form-check-label" for="@permiso">@permiso.Split('.')[1]</label>
                                     </div>
@@ -60,7 +61,11 @@
             </div>
 
             <div class="mt-4">
-                <button class="btn btn-success" @onclick="CrearRol">Guardar Rol</button>
+                <button class="btn btn-success" @onclick="GuardarRol">@(RolEditandoId.HasValue ? "Guardar Cambios" : "Guardar Rol")</button>
+                @if (RolEditandoId.HasValue)
+                {
+                    <button class="btn btn-outline-secondary ms-2" @onclick="CancelarEdicion">Cancelar</button>
+                }
             </div>
         </div>
     </div>
@@ -76,12 +81,13 @@
                     <th>Descripción</th>
                     <th>Permisos</th>
                     <th>Usuarios</th>
+                    <th class="text-end pe-4">Acciones</th>
                 </tr>
             </thead>
             <tbody>
                 @if (ListaRoles == null)
                 {
-                    <tr><td colspan="4" class="text-center py-4 text-muted">Cargando...</td></tr>
+                    <tr><td colspan="5" class="text-center py-4 text-muted">Cargando...</td></tr>
                 }
                 else
                 {
@@ -105,7 +111,32 @@
                                     }
                                 </div>
                             </td>
-                            <td><span class="badge bg-secondary rounded-pill">@r.CantidadUsuarios</span></td>
+                            <td>
+                                <span class="badge bg-secondary rounded-pill">@r.CantidadUsuarios</span>
+                                @if (r.Usuarios.Count > 0)
+                                {
+                                    <div class="small text-muted mt-1">
+                                        @foreach (var usuario in r.Usuarios)
+                                        {
+                                            <div>@usuario.NombreCompleto (@@@usuario.Username)</div>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="small text-muted">Sin usuarios activos</div>
+                                }
+                            </td>
+                            <td class="text-end pe-4">
+                                <div class="d-flex justify-content-end gap-2">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => EditarRol(r)">
+                                        <i class="bi bi-pencil"></i> Editar
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarRol(r)">
+                                        <i class="bi bi-trash"></i> Eliminar
+                                    </button>
+                                </div>
+                            </td>
                         </tr>
                     }
                 }
@@ -120,7 +151,8 @@
     private string MensajeError = "";
     private string MensajeExito = "";
     
-    private NuevoRolDto NuevoRol = new() { Permisos = new List<string>() };
+    private NuevoRolDto FormularioRol = new() { Permisos = new List<string>() };
+    private Guid? RolEditandoId;
 
     // Lista de módulos y permisos disponibles para la interfaz
     private List<ModuloPermisos> Modulos = new()
@@ -136,6 +168,13 @@
     protected override async Task OnInitializedAsync()
     {
         await CargarRoles();
+    }
+
+    private void AbrirFormularioNuevo()
+    {
+        RolEditandoId = null;
+        FormularioRol = new() { Permisos = new List<string>() };
+        MostrarFormulario = !MostrarFormulario;
     }
 
     private async Task CargarRoles()
@@ -157,18 +196,18 @@
     {
         if (seleccionado)
         {
-            if (!NuevoRol.Permisos.Contains(permiso)) NuevoRol.Permisos.Add(permiso);
+            if (!FormularioRol.Permisos.Contains(permiso)) FormularioRol.Permisos.Add(permiso);
         }
         else
         {
-            NuevoRol.Permisos.Remove(permiso);
+            FormularioRol.Permisos.Remove(permiso);
         }
     }
 
-    private async Task CrearRol()
+    private async Task GuardarRol()
     {
         MensajeError = ""; MensajeExito = "";
-        if (string.IsNullOrEmpty(NuevoRol.Nombre))
+        if (string.IsNullOrWhiteSpace(FormularioRol.Nombre))
         {
             MensajeError = "El nombre del rol es obligatorio.";
             return;
@@ -180,12 +219,14 @@
         // Convertimos la lista de permisos a un string separado por comas
         var request = new 
         { 
-            Nombre = NuevoRol.Nombre, 
-            Descripcion = NuevoRol.Descripcion, 
-            Permisos = string.Join(",", NuevoRol.Permisos)
+            Nombre = FormularioRol.Nombre.Trim(),
+            Descripcion = FormularioRol.Descripcion.Trim(),
+            Permisos = string.Join(",", FormularioRol.Permisos)
         };
 
-        var req = new HttpRequestMessage(HttpMethod.Post, "api/v1/Roles");
+        var method = RolEditandoId.HasValue ? HttpMethod.Put : HttpMethod.Post;
+        var url = RolEditandoId.HasValue ? $"api/v1/Roles/{RolEditandoId}" : "api/v1/Roles";
+        var req = new HttpRequestMessage(method, url);
         req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
         req.Content = JsonContent.Create(request);
         
@@ -193,15 +234,59 @@
 
         if (res.IsSuccessStatusCode)
         {
-            MensajeExito = "Rol creado correctamente.";
+            MensajeExito = RolEditandoId.HasValue ? "Rol actualizado correctamente." : "Rol creado correctamente.";
             MostrarFormulario = false;
-            NuevoRol = new() { Permisos = new List<string>() };
+            FormularioRol = new() { Permisos = new List<string>() };
+            RolEditandoId = null;
             await CargarRoles();
         }
         else
         {
             var error = await res.Content.ReadAsStringAsync();
-            MensajeError = string.IsNullOrEmpty(error) ? "Error al crear el rol." : error.Replace("\"", "");
+            MensajeError = string.IsNullOrEmpty(error) ? "Error al guardar el rol." : error.Replace("\"", "");
+        }
+    }
+
+    private void EditarRol(RolDto rol)
+    {
+        RolEditandoId = rol.Id;
+        FormularioRol = new()
+        {
+            Nombre = rol.Nombre,
+            Descripcion = rol.Descripcion,
+            Permisos = string.IsNullOrWhiteSpace(rol.Permisos)
+                ? new List<string>()
+                : rol.Permisos.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+        };
+        MostrarFormulario = true;
+        MensajeError = "";
+    }
+
+    private void CancelarEdicion()
+    {
+        RolEditandoId = null;
+        FormularioRol = new() { Permisos = new List<string>() };
+        MostrarFormulario = false;
+    }
+
+    private async Task EliminarRol(RolDto rol)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar el rol {rol.Nombre}?"))
+            return;
+
+        MensajeError = "";
+        var req = new HttpRequestMessage(HttpMethod.Delete, $"api/v1/Roles/{rol.Id}");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+        var res = await Http.SendAsync(req);
+        if (res.IsSuccessStatusCode)
+        {
+            MensajeExito = "Rol eliminado correctamente.";
+            await CargarRoles();
+        }
+        else
+        {
+            var error = await res.Content.ReadAsStringAsync();
+            MensajeError = string.IsNullOrWhiteSpace(error) ? "No se pudo eliminar el rol." : error.Replace("\"", "");
         }
     }
 
@@ -213,6 +298,14 @@
         public string Descripcion { get; set; } = "";
         public string Permisos { get; set; } = "";
         public int CantidadUsuarios { get; set; }
+        public List<UsuarioRolDto> Usuarios { get; set; } = new();
+    }
+
+    public class UsuarioRolDto
+    {
+        public Guid Id { get; set; }
+        public string Username { get; set; } = "";
+        public string NombreCompleto { get; set; } = "";
     }
 
     public class NuevoRolDto

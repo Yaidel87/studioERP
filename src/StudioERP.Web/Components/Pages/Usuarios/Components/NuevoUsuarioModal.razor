@@ -33,17 +33,41 @@
                             <label class="form-label small fw-bold">Nombre Completo</label>
                             <input class="form-control" @bind="NuevoUsuario.NombreCompleto" />
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Carnet de Identidad</label>
+                            <input class="form-control" @bind="NuevoUsuario.CarnetIdentidad" />
+                        </div>
                         <div class="col-md-12">
                             <label class="form-label small fw-bold">Email</label>
-                            <input type="email" class="form-control" @bind="NuevoUsuario.Email" />
+                            <input type="email" class="form-control" @bind="NuevoUsuario.Email" required />
+                        </div>
+                        <div class="col-md-12">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label small fw-bold mb-0">Otros contactos</label>
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AgregarContacto">Agregar</button>
+                            </div>
+                            @foreach (var contacto in NuevoUsuario.Contactos)
+                            {
+                                <div class="row g-2 mb-2">
+                                    <div class="col-4">
+                                        <select class="form-select" @bind="contacto.Tipo">
+                                            <option value="Telefono">Teléfono</option>
+                                            <option value="Email">Email</option>
+                                            <option value="Direccion">Dirección</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-7"><input class="form-control" @bind="contacto.Valor" /></div>
+                                    <div class="col-1"><button type="button" class="btn btn-outline-danger" @onclick="() => NuevoUsuario.Contactos.Remove(contacto)">×</button></div>
+                                </div>
+                            }
                         </div>
                         <div class="col-md-12">
                             <label class="form-label small fw-bold">Contraseña</label>
-                            <input type="password" class="form-control" @bind="NuevoUsuario.Password" />
+                            <input type="password" class="form-control" @bind="NuevoUsuario.Password" minlength="6" required />
                         </div>
                         <div class="col-md-12">
                             <label class="form-label small fw-bold">Rol</label>
-                            <select class="form-select" @bind="NuevoUsuario.RolId">
+                            <select class="form-select" @bind="NuevoUsuario.RolId" required>
                                 <option value="@Guid.Empty">Seleccione un rol...</option>
                                 @foreach (var rol in ListaRoles)
                                 {
@@ -111,12 +135,23 @@
     private async Task Guardar()
     {
         ErrorMensaje = "";
-        if (string.IsNullOrEmpty(NuevoUsuario.Username) || 
-            string.IsNullOrEmpty(NuevoUsuario.NombreCompleto) || 
-            string.IsNullOrEmpty(NuevoUsuario.Password) || 
+        if (string.IsNullOrWhiteSpace(NuevoUsuario.Username) ||
+            string.IsNullOrWhiteSpace(NuevoUsuario.NombreCompleto) ||
+            string.IsNullOrWhiteSpace(NuevoUsuario.Email) ||
+            string.IsNullOrWhiteSpace(NuevoUsuario.Password) ||
             NuevoUsuario.RolId == Guid.Empty)
         {
             ErrorMensaje = "Todos los campos son obligatorios.";
+            return;
+        }
+        if (!new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(NuevoUsuario.Email))
+        {
+            ErrorMensaje = "Escribe un email válido.";
+            return;
+        }
+        if (NuevoUsuario.Password.Length < 6)
+        {
+            ErrorMensaje = "La contraseña debe tener al menos 6 caracteres.";
             return;
         }
 
@@ -130,7 +165,21 @@
 
             var req = new HttpRequestMessage(HttpMethod.Post, "api/v1/Usuarios");
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
-            req.Content = JsonContent.Create(NuevoUsuario);
+            var request = new
+            {
+                NuevoUsuario.Username,
+                NuevoUsuario.NombreCompleto,
+                NuevoUsuario.CarnetIdentidad,
+                NuevoUsuario.Email,
+                NuevoUsuario.Password,
+                NuevoUsuario.RolId,
+                NuevoUsuario.Activo,
+                Contactos = NuevoUsuario.Contactos
+                    .Where(contacto => !string.IsNullOrWhiteSpace(contacto.Valor))
+                    .Select(contacto => new { contacto.Tipo, Valor = contacto.Valor.Trim() })
+                    .ToList()
+            };
+            req.Content = JsonContent.Create(request);
             
             var res = await Http.SendAsync(req);
 
@@ -167,6 +216,8 @@
         await MostrarChanged.InvokeAsync(false);
     }
 
+    private void AgregarContacto() => NuevoUsuario.Contactos.Add(new ContactoDto { Tipo = "Telefono" });
+
     // --- CLASES DTO ---
     public class RolDto
     {
@@ -178,10 +229,18 @@
     {
         public string Username { get; set; } = "";
         public string NombreCompleto { get; set; } = "";
+        public string CarnetIdentidad { get; set; } = "";
         public string Email { get; set; } = "";
         public string Password { get; set; } = "";
         public Guid RolId { get; set; }
         public bool Activo { get; set; } = true; // <-- Nuevo campo
+        public List<ContactoDto> Contactos { get; set; } = new();
+    }
+
+    public class ContactoDto
+    {
+        public string Tipo { get; set; } = "Telefono";
+        public string Valor { get; set; } = "";
     }
 
     public class RespuestaUsuario

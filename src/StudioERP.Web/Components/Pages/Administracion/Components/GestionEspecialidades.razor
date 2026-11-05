@@ -77,7 +77,7 @@
             if (string.IsNullOrEmpty(TokenService.Token))
                 TokenService.Token = await JS.InvokeAsync<string>("leerToken");
 
-            var req = new HttpRequestMessage(HttpMethod.Get, "api/v1/Staff/tipos");
+            var req = new HttpRequestMessage(HttpMethod.Get, "api/v1/Personal/tipos");
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
             var res = await Http.SendAsync(req);
             
@@ -98,7 +98,7 @@
                 TokenService.Token = await JS.InvokeAsync<string>("leerToken");
 
             var request = new { Nombre = NuevoTipoNombre };
-            var req = new HttpRequestMessage(HttpMethod.Post, "api/v1/Staff/tipos");
+            var req = new HttpRequestMessage(HttpMethod.Post, "api/v1/Personal/tipos");
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
             req.Content = JsonContent.Create(request);
             
@@ -130,7 +130,7 @@
             if (string.IsNullOrEmpty(TokenService.Token))
                 TokenService.Token = await JS.InvokeAsync<string>("leerToken");
 
-            var req = new HttpRequestMessage(HttpMethod.Delete, $"api/v1/Staff/tipos/{id}");
+            var req = new HttpRequestMessage(HttpMethod.Delete, $"api/v1/Personal/tipos/{id}");
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
             var res = await Http.SendAsync(req);
 

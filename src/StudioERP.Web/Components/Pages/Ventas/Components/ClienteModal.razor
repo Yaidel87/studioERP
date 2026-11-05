@@ -34,17 +34,29 @@
                             <label class="form-label small fw-bold">Descripción</label>
                             <textarea class="form-control" @bind="ClienteData.Descripcion" rows="2"></textarea>
                         </div>
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold">Teléfono</label>
-                            <input class="form-control" @bind="ClienteData.Telefono" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label small fw-bold">Email</label>
-                            <input type="email" class="form-control" @bind="ClienteData.Email" />
-                        </div>
-                        <div class="col-md-12">
-                            <label class="form-label small fw-bold">Dirección</label>
-                            <input class="form-control" @bind="ClienteData.Direccion" />
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label small fw-bold mb-0">Contactos</label>
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AgregarContacto">Agregar contacto</button>
+                            </div>
+                            @foreach (var contacto in ClienteData.Contactos)
+                            {
+                                <div class="row g-2 mb-2">
+                                    <div class="col-4">
+                                        <select class="form-select" @bind="contacto.Tipo">
+                                            <option value="Telefono">Teléfono</option>
+                                            <option value="Email">Email</option>
+                                            <option value="Direccion">Dirección</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-7">
+                                        <input class="form-control" type="@(contacto.Tipo == "Email" ? "email" : "text")" @bind="contacto.Valor" />
+                                    </div>
+                                    <div class="col-1">
+                                        <button type="button" class="btn btn-outline-danger" title="Quitar" @onclick="() => ClienteData.Contactos.Remove(contacto)">×</button>
+                                    </div>
+                                </div>
+                            }
                         </div>
                     </div>
                 </div>
@@ -97,7 +109,19 @@
         {
             var lista = await res.Content.ReadFromJsonAsync<List<ClienteDto>>();
             var encontrado = lista?.FirstOrDefault(c => c.Id == id);
-            if (encontrado != null) ClienteData = encontrado;
+            if (encontrado != null)
+            {
+                ClienteData = encontrado;
+                if (ClienteData.Contactos.Count == 0)
+                {
+                    if (!string.IsNullOrWhiteSpace(ClienteData.Telefono))
+                        ClienteData.Contactos.Add(new ContactoDto { Tipo = "Telefono", Valor = ClienteData.Telefono });
+                    if (!string.IsNullOrWhiteSpace(ClienteData.Email))
+                        ClienteData.Contactos.Add(new ContactoDto { Tipo = "Email", Valor = ClienteData.Email });
+                    if (!string.IsNullOrWhiteSpace(ClienteData.Direccion))
+                        ClienteData.Contactos.Add(new ContactoDto { Tipo = "Direccion", Valor = ClienteData.Direccion });
+                }
+            }
         }
     }
 
@@ -123,9 +147,13 @@
                 Nombre = ClienteData.Nombre, 
                 Apellidos = ClienteData.Apellidos,
                 Descripcion = ClienteData.Descripcion,
-                Telefono = ClienteData.Telefono, 
-                Email = ClienteData.Email, 
-                Direccion = ClienteData.Direccion 
+                Telefono = ClienteData.Contactos.FirstOrDefault(contacto => contacto.Tipo == "Telefono")?.Valor ?? "",
+                Email = ClienteData.Contactos.FirstOrDefault(contacto => contacto.Tipo == "Email")?.Valor ?? "",
+                Direccion = ClienteData.Contactos.FirstOrDefault(contacto => contacto.Tipo == "Direccion")?.Valor ?? "",
+                Contactos = ClienteData.Contactos
+                    .Where(contacto => !string.IsNullOrWhiteSpace(contacto.Valor))
+                    .Select(contacto => new ContactoRequest(contacto.Tipo, contacto.Valor.Trim()))
+                    .ToList()
             };
 
             HttpResponseMessage res;
@@ -172,6 +200,8 @@
         await MostrarChanged.InvokeAsync(false);
     }
 
+    private void AgregarContacto() => ClienteData.Contactos.Add(new ContactoDto { Tipo = "Telefono" });
+
     public class ClienteDto
     {
         public Guid Id { get; set; }
@@ -181,5 +211,14 @@
         public string Telefono { get; set; } = "";
         public string Email { get; set; } = "";
         public string Direccion { get; set; } = "";
+        public List<ContactoDto> Contactos { get; set; } = new();
     }
+
+    public class ContactoDto
+    {
+        public string Tipo { get; set; } = "Telefono";
+        public string Valor { get; set; } = "";
+    }
+
+    private sealed record ContactoRequest(string Tipo, string Valor);
 }

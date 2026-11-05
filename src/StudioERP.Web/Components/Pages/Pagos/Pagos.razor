@@ -50,7 +50,17 @@
                             <td class="ps-4">@p.Fecha</td>
                             <td class="fw-bold">@p.Contrato</td>
                             <td>@p.Cliente</td>
-                            <td class="fw-bold text-success">$@p.Monto @p.Moneda</td>
+                            <td class="fw-bold text-success">
+                                @p.Monto.ToString("N2") @p.Moneda
+                                @if (p.Moneda == "CUP" && p.MontoUSD.HasValue)
+                                {
+                                    <div class="small text-muted">≈ $@p.MontoUSD.Value.ToString("N2") USD</div>
+                                }
+                                else if (p.Moneda == "CUP")
+                                {
+                                    <div class="small text-warning">Sin tasa histórica</div>
+                                }
+                            </td>
                             <td>@p.MetodoPago</td>
                             <td>
                                 @if (p.EstadoConciliacion == "VERIFICADO") { <span class="badge bg-success">Verificado</span> }
@@ -165,7 +175,6 @@
             ContratoId = NuevoPago.ContratoId, 
             Monto = NuevoPago.Monto, 
             Moneda = NuevoPago.Moneda, 
-            TasaCambio = 1, 
             MetodoPago = NuevoPago.MetodoPago, 
             ReferenciaExterna = "" 
         };
@@ -202,7 +211,7 @@
 
     private async Task Imprimir() => await JS.InvokeVoidAsync("window.print");
 
-    public class PagoDto { public Guid Id { get; set; } public string Contrato { get; set; } = ""; public string Cliente { get; set; } = ""; public decimal Monto { get; set; } public string Moneda { get; set; } = ""; public string MetodoPago { get; set; } = ""; public string EstadoConciliacion { get; set; } = ""; public string Fecha { get; set; } = ""; }
+    public class PagoDto { public Guid Id { get; set; } public string Contrato { get; set; } = ""; public string Cliente { get; set; } = ""; public decimal Monto { get; set; } public decimal? MontoUSD { get; set; } public string Moneda { get; set; } = ""; public string MetodoPago { get; set; } = ""; public string EstadoConciliacion { get; set; } = ""; public string Fecha { get; set; } = ""; }
     public class ContratoDto { public Guid Id { get; set; } public string NumeroContrato { get; set; } = ""; public string Cliente { get; set; } = ""; }
     public class NuevoPagoDto { public Guid ContratoId { get; set; } public decimal Monto { get; set; } public string Moneda { get; set; } = "USD"; public string MetodoPago { get; set; } = "Efectivo"; }
 }

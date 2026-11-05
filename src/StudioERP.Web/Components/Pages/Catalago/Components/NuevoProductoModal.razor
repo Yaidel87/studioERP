@@ -1,6 +1,5 @@
 @using System.Net.Http.Json
 @using StudioERP.Web.Services
-@using System.Text.Json
 
 @inject HttpClient Http
 @inject IJSRuntime JS
@@ -13,189 +12,42 @@
         <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title fw-bold">Nuevo Producto</h5>
+                    <h5 class="modal-title fw-bold">Nuevo producto</h5>
                     <button type="button" class="btn-close" @onclick="Cerrar"></button>
                 </div>
                 <div class="modal-body">
-                    @if (!string.IsNullOrEmpty(ErrorMensaje)) { <div class="alert alert-danger">@ErrorMensaje</div> }
-
-                    <div class="row g-3 mb-4">
-                        <div class="col-md-8">
-                            <label class="form-label small fw-bold">Nombre del Producto</label>
-                            <input class="form-control" @bind="Producto.Nombre" placeholder="Ej. Álbum 8x10" />
+                    @if (!string.IsNullOrWhiteSpace(ErrorMensaje))
+                    {
+                        <div class="alert alert-danger">@ErrorMensaje</div>
+                    }
+                    <div class="row g-3">
+                        <div class="col-md-7">
+                            <label class="form-label">Nombre del producto</label>
+                            <input class="form-control" @bind="Producto.Nombre" maxlength="200" />
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small fw-bold">Precio Venta (USD)</label>
-                            <!-- AÑADIDO: @bind:after para recalcular -->
-                            <input type="number" class="form-control" @bind="Producto.PrecioVentaBaseUSD" @bind:after="CalcularTotales" />
+                        <div class="col-md-5">
+                            <label class="form-label">Precio base de venta (USD)</label>
+                            <input type="number" class="form-control" min="0" step="0.01" @bind="Producto.PrecioVentaBaseUSD" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Categoría</label>
+                            <select class="form-select" @bind="Producto.CategoriaProductoId">
+                                <option value="">Sin categoría</option>
+                                @foreach (var categoria in Categorias)
+                                {
+                                    <option value="@categoria.Id">@categoria.Nombre</option>
+                                }
+                            </select>
                         </div>
                     </div>
-
-                    <div class="mb-4">
-                        <label class="form-label small fw-bold">Categoría (Define los campos de costo)</label>
-                        <select class="form-select" @bind="CategoriaSeleccionadaId" @bind:after="OnCategoriaSeleccionada">
-                            <option value="@Guid.Empty">Seleccione una categoría...</option>
-                            @foreach (var c in ListaCategorias)
-                            {
-                                <option value="@c.Id">@c.Nombre</option>
-                            }
-                        </select>
+                    <div class="alert alert-info mt-3 mb-0">
+                        Los costos por formato y contexto se registran como partidas en la sección <strong>Fichas de costo</strong>.
                     </div>
-
-                    <!-- FICHA DE COSTO DINÁMICA -->
-                    @if (CategoriaNombre == "Fotos Sueltas")
-                    {
-                        <h6 class="fw-bold border-bottom pb-2 mb-3">Ficha de Costo: Fotos Sueltas</h6>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Formato (ej. 8x10)</label>
-                                <input class="form-control" @bind="Costo.Formato" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Impresión (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoImpresion" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Edición (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoEdicion" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Otros Gastos (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.OtrosGastos" @bind:after="CalcularTotales" />
-                            </div>
-                        </div>
-                    }
-                    else if (CategoriaNombre == "Enmarcados")
-                    {
-                        <h6 class="fw-bold border-bottom pb-2 mb-3">Ficha de Costo: Enmarcados</h6>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Formato (ej. 16x20)</label>
-                                <input class="form-control" @bind="Costo.Formato" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Enmarcado (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoEnmarcado" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Edición (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoEdicion" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Otros Gastos (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.OtrosGastos" @bind:after="CalcularTotales" />
-                            </div>
-                        </div>
-                    }
-                    else if (CategoriaNombre == "Álbumes")
-                    {
-                        <h6 class="fw-bold border-bottom pb-2 mb-3">Ficha de Costo: Álbumes</h6>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Formato (ej. 8x10)</label>
-                                <input class="form-control" @bind="Costo.Formato" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Confección (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoConfeccion" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Esquinero (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoEsquinero" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Diseño (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoDiseno" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Otros Gastos (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.OtrosGastos" @bind:after="CalcularTotales" />
-                            </div>
-                        </div>
-                    }
-                    else if (CategoriaNombre == "Photobooks")
-                    {
-                        <h6 class="fw-bold border-bottom pb-2 mb-3">Ficha de Costo: Photobooks</h6>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Formato (ej. 8x12)</label>
-                                <input class="form-control" @bind="Costo.Formato" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Portada (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoPortada" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Pliego (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoPliego" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Cant. de Pliegos</label>
-                                <input type="number" class="form-control" @bind="Costo.CantidadPliegos" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Montaje (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoMontaje" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Diseño (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoDiseno" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Edición (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoEdicion" @bind:after="CalcularTotales" />
-                            </div>
-                        </div>
-                    }
-                    else if (CategoriaNombre == "Extras")
-                    {
-                        <h6 class="fw-bold border-bottom pb-2 mb-3">Ficha de Costo: Extras (Llaveros, Afiches, etc.)</h6>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Base (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoBase" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Costo Diseño (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.CostoDiseno" @bind:after="CalcularTotales" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Otros Gastos (USD)</label>
-                                <input type="number" class="form-control" @bind="Costo.OtrosGastos" @bind:after="CalcularTotales" />
-                            </div>
-                        </div>
-                    }
-
-                    <!-- RESUMEN DE COSTOS Y RENTABILIDAD -->
-                    @if (CategoriaSeleccionadaId != Guid.Empty)
-                    {
-                        <div class="card bg-light mt-4 border-0">
-                            <div class="card-body p-3">
-                                <div class="row text-center">
-                                    <div class="col-md-4">
-                                        <small class="text-muted d-block">Costo Total (USD)</small>
-                                        <h5 class="fw-bold text-danger mb-0">$@CostoTotalCalculado</h5>
-                                    </div>
-                                    <div class="col-md-4 border-start border-end">
-                                        <small class="text-muted d-block">Precio Venta (USD)</small>
-                                        <h5 class="fw-bold text-success mb-0">$@Producto.PrecioVentaBaseUSD</h5>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <small class="text-muted d-block">Ganancia Bruta (USD)</small>
-                                        <h5 class="fw-bold @(GananciaBruta >= 0 ? "text-primary" : "text-danger") mb-0">
-                                            $@GananciaBruta
-                                        </h5>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    }
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" @onclick="Cerrar">Cancelar</button>
                     <button class="btn btn-primary" @onclick="Guardar" disabled="@Guardando">
-                        @if (Guardando) { <span class="spinner-border spinner-border-sm me-2"></span> }
-                        Guardar Producto
+                        @(Guardando ? "Guardando..." : "Guardar producto")
                     </button>
                 </div>
             </div>
@@ -204,144 +56,107 @@
 }
 
 @code {
-    [Parameter] public bool Mostrar { get; set; } = false;
+    [Parameter] public bool Mostrar { get; set; }
     [Parameter] public EventCallback<bool> MostrarChanged { get; set; }
     [Parameter] public EventCallback OnGuardado { get; set; }
 
-    private List<CategoriaDto> ListaCategorias = new();
+    private List<CategoriaDto> Categorias = new();
     private ProductoDto Producto = new();
-    private CostoDetalleDto Costo = new();
-    
-    private Guid CategoriaSeleccionadaId = Guid.Empty;
-    private string CategoriaNombre = "";
-    
-    private bool Guardando = false;
+    private bool Guardando;
+    private bool AbiertoPreviamente;
     private string ErrorMensaje = "";
-
-    private decimal CostoTotalCalculado = 0;
-    private decimal GananciaBruta = 0;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (Mostrar)
+        if (Mostrar && !AbiertoPreviamente)
         {
             Producto = new();
-            Costo = new();
-            CategoriaSeleccionadaId = Guid.Empty;
-            CategoriaNombre = "";
             ErrorMensaje = "";
-            CostoTotalCalculado = 0;
-            GananciaBruta = 0;
             await CargarCategorias();
         }
+        AbiertoPreviamente = Mostrar;
     }
 
     private async Task CargarCategorias()
     {
-        try
+        await AsegurarToken();
+        using var request = CrearRequest(HttpMethod.Get, "api/v1/Catalogos/categorias");
+        using var response = await Http.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
         {
-            if (string.IsNullOrEmpty(TokenService.Token))
-                TokenService.Token = await JS.InvokeAsync<string>("leerToken");
-
-            var req = new HttpRequestMessage(HttpMethod.Get, "api/v1/Catalogos/categorias");
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
-            var res = await Http.SendAsync(req);
-            if (res.IsSuccessStatusCode)
-                ListaCategorias = await res.Content.ReadFromJsonAsync<List<CategoriaDto>>() ?? new();
+            ErrorMensaje = await ObtenerError(response);
+            return;
         }
-        catch { }
-    }
-
-    private void OnCategoriaSeleccionada()
-    {
-        var cat = ListaCategorias.FirstOrDefault(c => c.Id == CategoriaSeleccionadaId);
-        CategoriaNombre = cat?.Nombre ?? "";
-        Costo = new();
-        CalcularTotales();
-    }
-
-    // --- CÁLCULO DE COSTOS Y GANANCIA ---
-    private void CalcularTotales()
-    {
-        // Sumamos todos los campos de costo posibles
-        CostoTotalCalculado = Costo.CostoImpresion + Costo.CostoEdicion + Costo.OtrosGastos + 
-                              Costo.CostoEnmarcado + Costo.CostoConfeccion + Costo.CostoEsquinero + 
-                              Costo.CostoDiseno + Costo.CostoPortada + Costo.CostoPliego + 
-                              Costo.CostoMontaje + Costo.CostoBase;
-
-        // Si es Photobook, sumamos el costo de los pliegos
-        if (CategoriaNombre == "Photobooks")
-        {
-            CostoTotalCalculado += (Costo.CostoPliego * Costo.CantidadPliegos);
-        }
-
-        GananciaBruta = Producto.PrecioVentaBaseUSD - CostoTotalCalculado;
+        Categorias = await response.Content.ReadFromJsonAsync<List<CategoriaDto>>() ?? new();
     }
 
     private async Task Guardar()
     {
         ErrorMensaje = "";
-        if (string.IsNullOrEmpty(Producto.Nombre) || CategoriaSeleccionadaId == Guid.Empty)
+        if (string.IsNullOrWhiteSpace(Producto.Nombre))
         {
-            ErrorMensaje = "El nombre y la categoría son obligatorios.";
+            ErrorMensaje = "El nombre del producto es obligatorio.";
             return;
         }
 
         Guardando = true;
-        StateHasChanged();
-
         try
         {
-            var detalleCostoJson = JsonSerializer.Serialize(Costo);
-
-            var request = new 
-            { 
-                Nombre = Producto.Nombre, 
-                PrecioVentaBaseUSD = Producto.PrecioVentaBaseUSD, 
-                CategoriaProductoId = CategoriaSeleccionadaId, 
-                DetalleCosto = detalleCostoJson 
-            };
-
-            var req = new HttpRequestMessage(HttpMethod.Post, "api/v1/Catalogos/productos");
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
-            req.Content = JsonContent.Create(request);
-            var res = await Http.SendAsync(req);
-
-            if (res.IsSuccessStatusCode)
+            await AsegurarToken();
+            using var request = CrearRequest(HttpMethod.Post, "api/v1/Catalogos/productos");
+            request.Content = JsonContent.Create(Producto);
+            using var response = await Http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
             {
-                await OnGuardado.InvokeAsync();
-                await Cerrar();
+                ErrorMensaje = await ObtenerError(response);
+                return;
             }
-            else
-            {
-                var error = await res.Content.ReadAsStringAsync();
-                ErrorMensaje = string.IsNullOrEmpty(error) ? "Error al crear producto." : error.Replace("\"", "");
-            }
+
+            await OnGuardado.InvokeAsync();
+            await Cerrar();
         }
-        catch (Exception ex) { ErrorMensaje = "Error: " + ex.Message; }
-        finally { Guardando = false; StateHasChanged(); }
+        catch (HttpRequestException ex)
+        {
+            ErrorMensaje = $"Error de conexión: {ex.Message}";
+        }
+        finally
+        {
+            Guardando = false;
+        }
     }
 
-    private async Task Cerrar() => await MostrarChanged.InvokeAsync(false);
-
-    // DTOs
-    public class CategoriaDto { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
-    public class ProductoDto { public string Nombre { get; set; } = ""; public decimal PrecioVentaBaseUSD { get; set; } }
-
-    public class CostoDetalleDto
+    private async Task AsegurarToken()
     {
-        public string Formato { get; set; } = "";
-        public decimal OtrosGastos { get; set; }
-        public decimal CostoImpresion { get; set; }
-        public decimal CostoEdicion { get; set; }
-        public decimal CostoEnmarcado { get; set; }
-        public decimal CostoConfeccion { get; set; }
-        public decimal CostoEsquinero { get; set; }
-        public decimal CostoDiseno { get; set; }
-        public decimal CostoPortada { get; set; }
-        public decimal CostoPliego { get; set; }
-        public int CantidadPliegos { get; set; }
-        public decimal CostoMontaje { get; set; }
-        public decimal CostoBase { get; set; }
+        if (string.IsNullOrWhiteSpace(TokenService.Token))
+            TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+    }
+
+    private HttpRequestMessage CrearRequest(HttpMethod method, string ruta)
+    {
+        var request = new HttpRequestMessage(method, ruta);
+        if (!string.IsNullOrWhiteSpace(TokenService.Token))
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+        return request;
+    }
+
+    private static async Task<string> ObtenerError(HttpResponseMessage response)
+    {
+        var contenido = await response.Content.ReadAsStringAsync();
+        return string.IsNullOrWhiteSpace(contenido) ? $"La API respondió con {(int)response.StatusCode}." : contenido.Trim('"');
+    }
+
+    private Task Cerrar() => MostrarChanged.InvokeAsync(false);
+
+    private sealed class CategoriaDto
+    {
+        public Guid Id { get; set; }
+        public string Nombre { get; set; } = "";
+    }
+
+    private sealed class ProductoDto
+    {
+        public string Nombre { get; set; } = "";
+        public decimal PrecioVentaBaseUSD { get; set; }
+        public Guid? CategoriaProductoId { get; set; }
     }
 }

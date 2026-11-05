@@ -1,5 +1,5 @@
 @page "/usuarios"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
 @using System.Net.Http.Json
 @using StudioERP.Web.Services
 @using StudioERP.Web.Components.Pages.Usuarios.Components
@@ -43,7 +43,7 @@
                 {
                     @foreach (var u in ListaUsuarios)
                     {
-                        <tr>
+                        <tr class="@(!u.Activo ? "table-secondary text-muted" : "")">
                             <td class="ps-4">
                                 <div class="d-flex align-items-center">
                                     @if (!string.IsNullOrEmpty(u.PhotoUrl))
@@ -72,6 +72,9 @@
                                 <div class="d-flex justify-content-end gap-2">
                                     <button class="btn btn-sm btn-outline-secondary" @onclick="() => AbrirEdicion(u)">
                                         <i class="bi bi-pencil"></i> Editar
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-warning" @onclick="() => RestablecerPassword(u)">
+                                        <i class="bi bi-key"></i> Restablecer contraseña
                                     </button>
                                     <button class="btn btn-sm btn-outline-danger" @onclick="() => EliminarUsuario(u.Id)">
                                         <i class="bi bi-trash"></i> Eliminar
@@ -133,7 +136,7 @@
     // --- CALLBACKS DE LOS MODALES ---
     private async Task RecargarDespuesDeCrear(Guid nuevoUsuarioId)
     {
-        MensajeExito = "Usuario creado correctamente.";
+        MensajeExito = $"Usuario creado correctamente (ID: {nuevoUsuarioId}).";
         await CargarDatos();
     }
 
@@ -153,11 +156,42 @@
             Id = u.Id,
             Username = u.Username,
             NombreCompleto = u.NombreCompleto,
+            CarnetIdentidad = u.CarnetIdentidad,
             Email = u.Email,
             RolId = rol?.Id ?? Guid.Empty,
-            Activo = u.Activo
+            Activo = u.Activo,
+            Contactos = u.Contactos.Select(contacto =>
+                new EditarUsuarioModal.ContactoDto { Tipo = contacto.Tipo, Valor = contacto.Valor }).ToList()
         };
         MostrarModalEdicion = true;
+    }
+
+    private async Task RestablecerPassword(UsuarioDto usuario)
+    {
+        var nuevaPassword = await JS.InvokeAsync<string?>("prompt", $"Nueva contraseña para {usuario.Username} (mínimo 6 caracteres):");
+        if (string.IsNullOrWhiteSpace(nuevaPassword)) return;
+        if (nuevaPassword.Length < 6)
+        {
+            MensajeError = "La contraseña debe tener al menos 6 caracteres.";
+            return;
+        }
+
+        MensajeError = "";
+        MensajeExito = "";
+        if (string.IsNullOrEmpty(TokenService.Token))
+            TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+
+        var req = new HttpRequestMessage(HttpMethod.Post, $"api/v1/Usuarios/{usuario.Id}/reset-password");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+        req.Content = JsonContent.Create(new { PasswordNueva = nuevaPassword });
+        var res = await Http.SendAsync(req);
+        if (res.IsSuccessStatusCode)
+            MensajeExito = $"Contraseña restablecida para {usuario.Username}.";
+        else
+        {
+            var error = await res.Content.ReadAsStringAsync();
+            MensajeError = string.IsNullOrWhiteSpace(error) ? "No se pudo restablecer la contraseña." : error.Replace("\"", "");
+        }
     }
 
     // --- ACCIÓN: Eliminar Usuario (Borrado Lógico) ---
@@ -194,10 +228,18 @@
         public Guid Id { get; set; }
         public string Username { get; set; } = "";
         public string NombreCompleto { get; set; } = "";
+        public string CarnetIdentidad { get; set; } = "";
         public string Email { get; set; } = "";
         public string PhotoUrl { get; set; } = "";
         public bool Activo { get; set; }
         public string Rol { get; set; } = "";
+        public List<ContactoDto> Contactos { get; set; } = new();
+    }
+
+    public class ContactoDto
+    {
+        public string Tipo { get; set; } = "";
+        public string Valor { get; set; } = "";
     }
 
     public class RolDto

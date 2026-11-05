@@ -1,3 +1,6 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using StudioERP.Domain.Entities;
@@ -23,6 +26,7 @@ public class AuthController : ControllerBase
     public record RegistroRequest(string Username, string NombreCompleto, string Email, string Password);
     public record LoginRequest(string Username, string Password);
 
+    [Authorize(Roles = "Admin")]
     [HttpPost("registro")]
     public async Task<IActionResult> Registro(RegistroRequest request)
     {
@@ -58,13 +62,14 @@ public class AuthController : ControllerBase
         return Ok(new { mensaje = "Usuario registrado con éxito", id = nuevoUsuario.Id });
     }
 
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request)
     {
         // 1. Buscar al usuario con su Rol
         var usuario = await _context.Usuarios
             .Include(u => u.Rol)
-            .FirstOrDefaultAsync(u => u.Username == request.Username);
+            .FirstOrDefaultAsync(u => u.Username == request.Username && !u.IsDeleted);
 
         if (usuario == null || !usuario.Activo)
             return Unauthorized("Credenciales inválidas o usuario inactivo.");
@@ -76,6 +81,9 @@ public class AuthController : ControllerBase
         // 3. Generar el Token
         var token = _authService.GenerateToken(usuario, usuario.Rol.Nombre);
 
+        RegistrarEventoAutenticacion(usuario.Id, "LOGIN_SUCCESS");
+        await _context.SaveChangesAsync();
+
         // 4. Devolver el Token al Frontend
         return Ok(new
         {
@@ -83,6 +91,35 @@ public class AuthController : ControllerBase
             username = usuario.Username,
             nombre = usuario.NombreCompleto,
             rol = usuario.Rol.Nombre
+        });
+    }
+
+    [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+
+        if (!Guid.TryParse(userIdValue, out var userId))
+            return Unauthorized();
+
+        RegistrarEventoAutenticacion(userId, "LOGOUT");
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    private void RegistrarEventoAutenticacion(Guid userId, string action)
+    {
+        _context.AuditLogs.Add(new AuditLog
+        {
+            EntityName = "Authentication",
+            EntityId = userId.ToString(),
+            Action = action,
+            Timestamp = DateTime.UtcNow,
+            UserId = userId,
+            Changes = "{}"
         });
     }
 }

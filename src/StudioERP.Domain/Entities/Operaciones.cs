@@ -9,7 +9,20 @@ public class Cliente : BaseEntity
     public string Telefono { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Direccion { get; set; } = string.Empty;
+    public ICollection<Contacto> Contactos { get; set; } = new List<Contacto>();
     public ICollection<Contrato> Contratos { get; set; } = new List<Contrato>();
+}
+
+public class Contacto : BaseEntity
+{
+    public string Tipo { get; set; } = string.Empty;
+    public string Valor { get; set; } = string.Empty;
+    public Guid? ClienteId { get; set; }
+    public Cliente? Cliente { get; set; }
+    public Guid? UsuarioId { get; set; }
+    public Usuario? Usuario { get; set; }
+    public Guid? ProveedorId { get; set; }
+    public Proveedor? Proveedor { get; set; }
 }
 
 // --- PERSONAL DEL ESTUDIO (STAFF) ---
@@ -55,6 +68,12 @@ public class ContractItem : BaseEntity
     public Contrato Contrato { get; set; } = null!;
     public Guid? ProductoId { get; set; }
     public Producto? Producto { get; set; }
+    public Guid? FichaCostoProductoId { get; set; }
+    public FichaCostoProducto? FichaCostoProducto { get; set; }
+    public Guid? PaqueteId { get; set; }
+    public Paquete? Paquete { get; set; }
+    public Guid? PromocionId { get; set; }
+    public Promocion? Promocion { get; set; }
     public int Cantidad { get; set; } = 1;
     public decimal PrecioVentaUSD { get; set; }
     public decimal SubtotalUSD { get; set; }
@@ -115,6 +134,7 @@ public class Pago : BaseEntity
     public Guid ContratoId { get; set; }
     public Contrato Contrato { get; set; } = null!;
     public decimal Monto { get; set; }
+    public decimal? MontoUSD { get; set; }
     public string Moneda { get; set; } = "USD";
     public decimal TasaCambio { get; set; } = 1;
     public string MetodoPago { get; set; } = string.Empty;
@@ -123,12 +143,29 @@ public class Pago : BaseEntity
     public DateTime FechaPago { get; set; }
 }
 
+public class TipoCambioDiario : BaseEntity
+{
+    public DateOnly Fecha { get; set; }
+    public decimal CupPorUsd { get; set; }
+}
+
+public class CambioMoneda : BaseEntity
+{
+    public DateTime Fecha { get; set; }
+    public decimal MontoCUP { get; set; }
+    public decimal CupPorUsd { get; set; }
+    public decimal MontoUSDRecibido { get; set; }
+}
+
 public class Gasto : BaseEntity
 {
     public string Categoria { get; set; } = string.Empty;
     public string Descripcion { get; set; } = string.Empty;
     public decimal Monto { get; set; }
     public string Moneda { get; set; } = "USD";
+    public decimal? MontoUSD { get; set; }
+    public decimal? TasaCambio { get; set; }
+    public string TipoMovimiento { get; set; } = "GastoOperativo";
     public DateTime Fecha { get; set; }
 }
 
@@ -137,6 +174,20 @@ public class Comision : BaseEntity
     public Guid SessionStaffId { get; set; }
     public SessionStaff SessionStaff { get; set; } = null!;
     public decimal MontoComisionUSD { get; set; }
+    public string Estado { get; set; } = "PENDIENTE";
+    public DateTime? FechaPago { get; set; }
+}
+
+public class PagoPersonalIndirecto : BaseEntity
+{
+    public Guid StaffId { get; set; }
+    public Staff Staff { get; set; } = null!;
+    public decimal Monto { get; set; }
+    public decimal? MontoUSD { get; set; }
+    public decimal? TasaCambio { get; set; }
+    public string Moneda { get; set; } = "USD";
+    public string Concepto { get; set; } = string.Empty;
+    public DateTime Fecha { get; set; }
     public string Estado { get; set; } = "PENDIENTE";
     public DateTime? FechaPago { get; set; }
 }

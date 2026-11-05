@@ -79,6 +79,19 @@
                         </div>
                     </div>
 
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-bold">Personal asignado (opcional)</label>
+                            <select class="form-select" @bind="PersonalSeleccionadoId">
+                                <option value="">Sin asignar</option>
+                                @foreach (var persona in ListaPersonal)
+                                {
+                                    <option value="@persona.Id">@persona.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
                     <!-- AGREGAR ÍTEMS -->
                     <h6 class="fw-bold mb-3 border-bottom pb-2">Agregar Ítems al Contrato</h6>
                     
@@ -89,7 +102,7 @@
                                 <option value="@Guid.Empty">Seleccione...</option>
                                 @foreach (var p in ListaProductos)
                                 {
-                                    <option value="@p.Id">@p.Nombre - $@p.PrecioVentaBaseUSD</option>
+                                    <option value="@p.Id">@(p.PaqueteId.HasValue ? "Paquete: " : "")@p.Nombre - $@p.PrecioVentaBaseUSD</option>
                                 }
                             </select>
                         </div>
@@ -157,6 +170,7 @@
 
     private List<ClienteDto> ListaClientes = new();
     private List<ProductoDto> ListaProductos = new();
+    private List<PersonalDto> ListaPersonal = new();
     private List<ItemAgregadoDto> ItemsAgregados = new();
     
     private string BusquedaCliente = "";
@@ -181,6 +195,7 @@
     private DateTime? FechaSesion = DateTime.Today.AddHours(9);
     private string Locacion = "Estudio";
     private string EstadoInicial = "Borrador";
+    private Guid? PersonalSeleccionadoId;
     
     private Guid ItemSeleccionadoId;
     private int CantidadItem = 1;
@@ -199,6 +214,7 @@
             FechaSesion = DateTime.Today.AddHours(9);
             Locacion = "Estudio";
             EstadoInicial = "Borrador";
+            PersonalSeleccionadoId = null;
             ItemsAgregados.Clear();
             ClienteSeleccionado = null;
             BusquedaCliente = "";
@@ -223,9 +239,61 @@
             reqProductos.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
             var resProductos = await Http.SendAsync(reqProductos);
             if (resProductos.IsSuccessStatusCode)
-                ListaProductos = await resProductos.Content.ReadFromJsonAsync<List<ProductoDto>>() ?? new();
+            {
+                var productos = await resProductos.Content.ReadFromJsonAsync<List<ProductoDto>>() ?? new();
+                ListaProductos = new();
+                foreach (var producto in productos)
+                {
+                    if (producto.FichasCosto.Count == 0)
+                    {
+                        producto.ProductoId = producto.Id;
+                        ListaProductos.Add(producto);
+                        continue;
+                    }
+
+                    ListaProductos.AddRange(producto.FichasCosto.Select(ficha => new ProductoDto
+                    {
+                        Id = ficha.Id,
+                        ProductoId = producto.Id,
+                        FichaCostoProductoId = ficha.Id,
+                        Nombre = $"{producto.Nombre} - {ficha.Variante} ({ficha.Contexto})",
+                        PrecioVentaBaseUSD = ficha.PrecioVentaUSD
+                    }));
+                }
+            }
+            else
+                ErrorMensaje = "No se pudieron cargar los productos.";
+
+            var reqPaquetes = new HttpRequestMessage(HttpMethod.Get, "api/v1/Catalogos/paquetes");
+            reqPaquetes.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+            var resPaquetes = await Http.SendAsync(reqPaquetes);
+            if (resPaquetes.IsSuccessStatusCode)
+            {
+                var paquetes = await resPaquetes.Content.ReadFromJsonAsync<List<PaqueteDto>>() ?? new();
+                ListaProductos.AddRange(paquetes.Select(paquete => new ProductoDto
+                {
+                    Id = paquete.Id,
+                    PaqueteId = paquete.Id,
+                    ProductoId = null,
+                    Nombre = paquete.Nombre,
+                    PrecioVentaBaseUSD = paquete.PrecioVentaFinalUSD
+                }));
+            }
+            else
+                ErrorMensaje = "No se pudieron cargar los paquetes.";
+
+            var reqPersonal = new HttpRequestMessage(HttpMethod.Get, "api/v1/Agenda/personal-disponible");
+            reqPersonal.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+            var resPersonal = await Http.SendAsync(reqPersonal);
+            if (resPersonal.IsSuccessStatusCode)
+                ListaPersonal = await resPersonal.Content.ReadFromJsonAsync<List<PersonalDto>>() ?? new();
+            else
+                ErrorMensaje = "No se pudo cargar el personal disponible para asignar.";
         }
-        catch { }
+        catch (Exception ex)
+        {
+            ErrorMensaje = $"Error al cargar los datos del contrato: {ex.Message}";
+        }
     }
 
     private void ActualizarBusqueda(ChangeEventArgs e)
@@ -275,6 +343,9 @@
         ItemsAgregados.Add(new ItemAgregadoDto 
         { 
             Id = producto.Id, 
+            ProductoId = producto.PaqueteId.HasValue ? null : producto.ProductoId ?? producto.Id,
+            FichaCostoProductoId = producto.FichaCostoProductoId,
+            PaqueteId = producto.PaqueteId,
             Nombre = producto.Nombre, 
             Precio = PrecioItem,
             Cantidad = CantidadItem 
@@ -305,7 +376,9 @@
                 TokenService.Token = await JS.InvokeAsync<string>("leerToken");
 
             var itemsRequest = ItemsAgregados.Select(i => new {
-                ProductoId = (Guid?)i.Id,
+                ProductoId = i.ProductoId,
+                PaqueteId = i.PaqueteId,
+                FichaCostoProductoId = i.FichaCostoProductoId,
                 Cantidad = i.Cantidad,
                 PrecioVentaUSD = i.Precio
             }).ToList();
@@ -316,7 +389,8 @@
                 FechaSesion = FechaSesion,
                 Locacion = Locacion,
                 Estado = EstadoInicial, 
-                Items = itemsRequest
+                Items = itemsRequest,
+                PersonalId = PersonalSeleccionadoId
             };
 
             var req = new HttpRequestMessage(HttpMethod.Post, "api/v1/Contratos");
@@ -359,6 +433,33 @@
         public string NombreCompleto => $"{Nombre} {Apellidos}".Trim();
     }
     
-    public class ProductoDto { public Guid Id { get; set; } public string Nombre { get; set; } = ""; public decimal PrecioVentaBaseUSD { get; set; } }
-    public class ItemAgregadoDto { public Guid Id { get; set; } public string Nombre { get; set; } = ""; public int Cantidad { get; set; } public decimal Precio { get; set; } }
+    public class ProductoDto
+    {
+        public Guid Id { get; set; }
+        public Guid? ProductoId { get; set; }
+        public Guid? PaqueteId { get; set; }
+        public Guid? FichaCostoProductoId { get; set; }
+        public string Nombre { get; set; } = "";
+        public decimal PrecioVentaBaseUSD { get; set; }
+        public List<FichaCostoDto> FichasCosto { get; set; } = new();
+    }
+    public class FichaCostoDto
+    {
+        public Guid Id { get; set; }
+        public string Variante { get; set; } = "";
+        public string Contexto { get; set; } = "";
+        public decimal PrecioVentaUSD { get; set; }
+    }
+    public class PaqueteDto { public Guid Id { get; set; } public string Nombre { get; set; } = ""; public decimal PrecioVentaFinalUSD { get; set; } }
+    public class PersonalDto { public Guid Id { get; set; } public string Nombre { get; set; } = ""; }
+    public class ItemAgregadoDto
+    {
+        public Guid Id { get; set; }
+        public Guid? ProductoId { get; set; }
+        public Guid? PaqueteId { get; set; }
+        public Guid? FichaCostoProductoId { get; set; }
+        public string Nombre { get; set; } = "";
+        public int Cantidad { get; set; }
+        public decimal Precio { get; set; }
+    }
 }

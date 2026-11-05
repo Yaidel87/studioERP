@@ -1,5 +1,6 @@
 @page "/catalago/catalogo"
-@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+@page "/ventas/productos"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
 @using System.Net.Http.Json
 @using StudioERP.Web.Components.Pages.Catalago.Components
 @using StudioERP.Web.Services
@@ -8,10 +9,10 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 @inject TokenService TokenService
-<PageTitle>Catálogo - StudioERP</PageTitle>
+<PageTitle>Productos - StudioERP</PageTitle>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="fw-bold m-0">Catálogo de Productos</h4>
+    <h4 class="fw-bold m-0">Productos</h4>
     <div class="d-flex gap-2">
         <input type="text" class="form-control" placeholder="Buscar producto..." @bind="Busqueda" @bind:event="oninput" style="width: 250px;" />
         <button class="btn btn-outline-secondary" @onclick="Imprimir"><i class="bi bi-printer"></i> Imprimir</button>
@@ -20,6 +21,7 @@
 </div>
 
 @if (MensajeError != "") { <div class="alert alert-danger">@MensajeError</div> }
+@if (MensajeExito != "") { <div class="alert alert-success">@MensajeExito</div> }
 
 <div class="accordion" id="accordionCatalogo">
     @if (ListaCategorias == null)
@@ -53,6 +55,7 @@
                                     <tr>
                                         <th class="ps-4">Producto</th>
                                         <th class="text-end pe-4">Precio (USD)</th>
+                                        <th class="text-end pe-4">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -61,6 +64,14 @@
                                         <tr @ondblclick="() => AbrirEdicion(prod.Id)" style="cursor: pointer;" title="Doble clic para editar">
                                             <td class="ps-4">@prod.Nombre</td>
                                             <td class="text-end pe-4 fw-bold text-success">$@prod.PrecioVentaBaseUSD</td>
+                                            <td class="text-end pe-4">
+                                                <button class="btn btn-sm btn-outline-primary me-1" title="Editar" @onclick="() => AbrirEdicion(prod.Id)">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-outline-danger" title="Desactivar" @onclick="() => EliminarProducto(prod.Id)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
                                         </tr>
                                     }
                                 </tbody>
@@ -84,6 +95,7 @@
     private List<CategoriaDto>? ListaCategorias;
     private string Busqueda = "";
     private string MensajeError = "";
+    private string MensajeExito = "";
     
     private bool MostrarModalNuevoProducto = false;
     private bool MostrarModalEditarProducto = false;
@@ -127,6 +139,32 @@
         await CargarDatos();
     }
 
+    private async Task EliminarProducto(Guid id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Desactivar este producto?"))
+            return;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(TokenService.Token))
+                TokenService.Token = await JS.InvokeAsync<string>("leerToken");
+            var request = new HttpRequestMessage(HttpMethod.Delete, $"api/v1/Catalogos/productos/{id}");
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
+            var response = await Http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                MensajeError = await response.Content.ReadAsStringAsync();
+                return;
+            }
+            MensajeExito = "Producto desactivado correctamente.";
+            await CargarDatos();
+        }
+        catch (HttpRequestException ex)
+        {
+            MensajeError = $"Error de conexión: {ex.Message}";
+        }
+    }
+
     private async Task Imprimir() => await JS.InvokeVoidAsync("window.print");
 
     public class CategoriaDto
@@ -142,6 +180,5 @@
         public Guid Id { get; set; }
         public string Nombre { get; set; } = "";
         public decimal PrecioVentaBaseUSD { get; set; }
-        public string DetalleCosto { get; set; } = "{}";
     }
 }

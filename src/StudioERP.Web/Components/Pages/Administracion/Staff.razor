@@ -148,7 +148,7 @@
 
     private async Task RecargarDespuesDeCrearUsuario(Guid nuevoUsuarioId)
     {
-        MensajeExito = "Usuario creado. Puedes asignarle especialidades haciendo clic en su fila.";
+        MensajeExito = $"Usuario creado (ID: {nuevoUsuarioId}). Puedes asignarle especialidades haciendo clic en su fila.";
         await CargarDatos();
     }
 

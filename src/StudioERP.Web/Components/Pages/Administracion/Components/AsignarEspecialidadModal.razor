@@ -95,10 +95,12 @@
             reqUsers.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
             var resUsers = await Http.SendAsync(reqUsers);
             if (resUsers.IsSuccessStatusCode)
-                ListaUsuarios = await resUsers.Content.ReadFromJsonAsync<List<UsuarioDto>>() ?? new();
+                ListaUsuarios = (await resUsers.Content.ReadFromJsonAsync<List<UsuarioDto>>() ?? new())
+                    .Where(u => u.Activo)
+                    .ToList();
 
             // Cargar Tipos de Staff
-            var reqTipos = new HttpRequestMessage(HttpMethod.Get, "api/v1/Staff/tipos");
+            var reqTipos = new HttpRequestMessage(HttpMethod.Get, "api/v1/Personal/tipos");
             reqTipos.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
             var resTipos = await Http.SendAsync(reqTipos);
             if (resTipos.IsSuccessStatusCode)
@@ -124,8 +126,8 @@
             if (string.IsNullOrEmpty(TokenService.Token))
                 TokenService.Token = await JS.InvokeAsync<string>("leerToken");
 
-            var request = new { UsuarioId = UsuarioId, TipoStaffId = TipoStaffId };
-            var req = new HttpRequestMessage(HttpMethod.Post, "api/v1/Staff");
+            var request = new { UsuarioId = UsuarioId, TipoStaffIds = new[] { TipoStaffId } };
+            var req = new HttpRequestMessage(HttpMethod.Post, "api/v1/Personal");
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", TokenService.Token);
             req.Content = JsonContent.Create(request);
             
@@ -167,6 +169,7 @@
         public Guid Id { get; set; }
         public string Username { get; set; } = "";
         public string NombreCompleto { get; set; } = "";
+        public bool Activo { get; set; }
     }
 
     public class TipoStaffDto
